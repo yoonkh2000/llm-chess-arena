@@ -43,6 +43,23 @@ test("Stockfish 18 worker automatically plays without showing analysis", async (
   await expect(page.locator(".review-list")).toHaveCount(0);
 });
 
+test("human can drag a piece to make a legal move", async ({ page }) => {
+  await page.goto("./");
+  await expect(page.getByText("IndexedDB에 자동 저장됩니다.")).toBeVisible();
+  await page.getByRole("button", { name: "대국 시작" }).click();
+
+  const source = page.getByRole("button", { name: "e2" });
+  const target = page.getByRole("button", { name: "e4" });
+  await expect(source).toHaveAttribute("draggable", "true");
+  await expect(page.getByRole("button", { name: "e7" })).toHaveAttribute("draggable", "false");
+  await source.dragTo(target);
+
+  await expect(target.locator(".piece-white")).toHaveText("♟");
+  await expect(source.locator(".piece")).toBeEmpty();
+  await expect(page.getByRole("heading", { name: "LLM 수 입력" })).toBeVisible();
+  await expect(page.locator(".moves span")).toHaveText(["1. e4"]);
+});
+
 test("white, black, and random color choices assign both players", async ({ page }) => {
   await page.goto("./");
   await expect(page.getByText("IndexedDB에 자동 저장됩니다.")).toBeVisible();

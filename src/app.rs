@@ -2,8 +2,8 @@ use js_sys::{Array, Date, Math};
 use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{
-    Blob, BlobPropertyBag, HtmlInputElement, HtmlSelectElement, HtmlTextAreaElement, MessageEvent,
-    Url, Worker,
+    Blob, BlobPropertyBag, DragEvent, HtmlInputElement, HtmlSelectElement, HtmlTextAreaElement,
+    MessageEvent, Url, Worker,
 };
 use yew::prelude::*;
 
@@ -85,6 +85,9 @@ pub enum Msg {
     StartGame,
     NewMatch,
     SelectSquare(String),
+    DragStart(String),
+    DropSquare(String),
+    DragEnd,
     SetLlmInput(String),
     SubmitLlm,
     Resign,
@@ -259,34 +262,40 @@ impl Component for App {
                 }
             }
             Msg::SelectSquare(square) => {
+                if self.select_human_square(square) {
+                    should_save = true;
+                }
+            }
+            Msg::DragStart(square) => {
                 if self.position_analysis_busy {
                     self.status = "현재 포지션 분석이 끝날 때까지 잠시 기다려 주세요.".into();
                     return true;
                 }
+                if let Some(active) = self.active.as_mut()
+                    && active.record.result.is_none()
+                    && participant_kind(active) == "human"
+                    && active
+                        .chess
+                        .legal_moves()
+                        .iter()
+                        .any(|uci| uci.starts_with(&square))
+                {
+                    active.selected = Some(square);
+                }
+            }
+            Msg::DropSquare(square) => {
+                if self
+                    .active
+                    .as_ref()
+                    .is_some_and(|active| active.selected.is_some())
+                    && self.select_human_square(square)
+                {
+                    should_save = true;
+                }
+            }
+            Msg::DragEnd => {
                 if let Some(active) = self.active.as_mut() {
-                    if active.record.result.is_some() || participant_kind(active) != "human" {
-                        return false;
-                    }
-                    if let Some(from) = active.selected.take() {
-                        let mut uci = format!("{from}{square}");
-                        if !active.chess.legal_moves().contains(&uci)
-                            && active.chess.legal_moves().contains(&format!("{uci}q"))
-                        {
-                            uci.push('q');
-                        }
-                        if let Err(error) = play_move(active, &uci, None, vec![]) {
-                            active.notice = error;
-                            active.selected = Some(square);
-                        } else {
-                            self.position_analysis = None;
-                            self.sync_active_record();
-                            should_save = true;
-                            self.finish_active_if_needed();
-                            self.request_engine_turn();
-                        }
-                    } else {
-                        active.selected = Some(square);
-                    }
+                    active.selected = None;
                 }
             }
             Msg::SetLlmInput(value) => {
@@ -551,6 +560,42 @@ impl Component for App {
 }
 
 impl App {
+    fn select_human_square(&mut self, square: String) -> bool {
+        if self.position_analysis_busy {
+            self.status = "현재 포지션 분석이 끝날 때까지 잠시 기다려 주세요.".into();
+            return false;
+        }
+        let mut moved = false;
+        if let Some(active) = self.active.as_mut() {
+            if active.record.result.is_some() || participant_kind(active) != "human" {
+                return false;
+            }
+            if let Some(from) = active.selected.take() {
+                let mut uci = format!("{from}{square}");
+                if !active.chess.legal_moves().contains(&uci)
+                    && active.chess.legal_moves().contains(&format!("{uci}q"))
+                {
+                    uci.push('q');
+                }
+                if let Err(error) = play_move(active, &uci, None, vec![]) {
+                    active.notice = error;
+                    active.selected = Some(square);
+                } else {
+                    moved = true;
+                }
+            } else {
+                active.selected = Some(square);
+            }
+        }
+        if moved {
+            self.position_analysis = None;
+            self.sync_active_record();
+            self.finish_active_if_needed();
+            self.request_engine_turn();
+        }
+        moved
+    }
+
     fn fill_default_selections(&mut self) {
         let humans: Vec<String> = self
             .data
@@ -991,14 +1036,26 @@ impl App {
         });
         html! { <section class="match-layout">
             <div class="card board-card"><div class="player black"><b>{&active.record.black.name}</b><span>{active.record.black.elo_before.map(|e| format!("Elo {e:.0}")).unwrap_or_default()}</span></div>
-                <div class="chessboard">{for (0..64).map(|index| { let square=square_name(index); let file=((b'a'+(index%8) as u8)as char).to_string(); let selected=active.selected.as_deref()==Some(&square); let piece=pieces[index]; let glyph=piece.map(unicode_piece).unwrap_or(""); let piece_class=piece.map(|value|if value.is_ascii_uppercase(){"piece-white"}else{"piece-black"}); html!{<button class={classes!("square", ((index+index/8)%2==0).then_some("light"), ((index+index/8)%2!=0).then_some("dark"), selected.then_some("selected"))} aria-label={square.clone()} onclick={ctx.link().callback(move |_| Msg::SelectSquare(square.clone()))}><span class={classes!("piece",piece_class)}>{glyph}</span>{if index%8==0 {html!{<small class="rank-label">{format!("{}", 8-index/8)}</small>}} else {html!{}}}{if index/8==7 {html!{<small class="file-label">{file}</small>}} else {html!{}}}</button>} })}</div>
+                <div class="chessboard">{for (0..64).map(|index| {
+                    let square=square_name(index);
+                    let file=((b'a'+(index%8) as u8)as char).to_string();
+                    let selected=active.selected.as_deref()==Some(&square);
+                    let piece=pieces[index];
+                    let glyph=piece.map(unicode_piece).unwrap_or("");
+                    let piece_class=piece.map(|value|if value.is_ascii_uppercase(){"piece-white"}else{"piece-black"});
+                    let movable=kind=="human" && active.record.result.is_none() && piece.is_some_and(|value|match active.chess.side_to_move(){Side::White=>value.is_ascii_uppercase(),Side::Black=>value.is_ascii_lowercase()});
+                    let click_square=square.clone();
+                    let drag_square=square.clone();
+                    let drop_square=square.clone();
+                    html!{<button class={classes!("square", ((index+index/8)%2==0).then_some("light"), ((index+index/8)%2!=0).then_some("dark"), selected.then_some("selected"))} aria-label={square} draggable={movable.to_string()} onclick={ctx.link().callback(move |_| Msg::SelectSquare(click_square.clone()))} ondragstart={ctx.link().callback(move |_:DragEvent|Msg::DragStart(drag_square.clone()))} ondragend={ctx.link().callback(|_:DragEvent|Msg::DragEnd)} ondragover={Callback::from(|event:DragEvent|event.prevent_default())} ondrop={ctx.link().callback(move |event:DragEvent|{event.prevent_default();Msg::DropSquare(drop_square.clone())})}><span class={classes!("piece",piece_class)}>{glyph}</span>{if index%8==0 {html!{<small class="rank-label">{format!("{}", 8-index/8)}</small>}} else {html!{}}}{if index/8==7 {html!{<small class="file-label">{file}</small>}} else {html!{}}}</button>}
+                })}</div>
                 <div class="player white"><b>{&active.record.white.name}</b><span>{active.record.white.elo_before.map(|e| format!("Elo {e:.0}")).unwrap_or_default()}</span></div>
             </div>
             <div class="side-stack"><div class="card"><span class="eyebrow">{active.record.mode.label()}</span><h2>{if let Some(result)=&active.record.result {format!("종료 · {result}")} else {format!("{} 차례", if active.chess.side_to_move()==Side::White {"백"} else {"흑"})}}</h2><p>{if active.notice.is_empty(){format!("{} ply · FEN은 매 수 자동 저장", active.chess.ply())}else{active.notice.clone()}}</p><div class="moves">{for active.record.moves.iter().filter(|m| !m.uci.is_empty()).map(|m| html!{<span>{format!("{}. {}", m.ply, m.san)}</span>})}</div><div class="inline"><button onclick={ctx.link().callback(|_| Msg::Resign)} disabled={active.record.result.is_some()}>{"기권"}</button><button onclick={ctx.link().callback(|_| Msg::AgreeDraw)} disabled={active.record.result.is_some()}>{"무승부"}</button>{if active.record.result.is_some(){html!{<button class="primary" onclick={ctx.link().callback(|_|Msg::NewMatch)}>{"새 대국"}</button>}}else{html!{}}}</div><div class="analysis-request"><button disabled={active.waiting_engine||self.position_analysis_busy} onclick={ctx.link().callback(|_|Msg::AnalyzeCurrent)}>{if self.position_analysis_busy{"Stockfish 분석 중…"}else{"현재 포지션 분석"}}</button>{if let Some(line)=&self.position_analysis{html!{<p class="analysis-result"><b>{line.pv.first().map(|mv|format!("추천 수 {mv}")).unwrap_or_else(||"분석 완료".into())}</b><span>{if let Some(mate)=line.mate{format!("메이트 {mate} · depth {}",line.depth)}else{format!("현재 차례 기준 {:+}cp · depth {}",line.score_cp.unwrap_or(0),line.depth)}}</span></p>}}else{html!{<small>{"누를 때만 로컬 Stockfish가 분석합니다."}</small>}}}</div></div>
                 {if let Some(prompt)=prompt {
                     html!{<div class="card prompt-card"><span class="eyebrow">{"MANUAL LLM BRIDGE"}</span><h2>{"LLM 수 입력"}</h2><textarea class="prompt" readonly=true value={prompt.clone()} /><button onclick={ctx.link().callback(move |_| Msg::Copy(prompt.clone()))}>{"프롬프트 복사"}</button><textarea placeholder="LLM 응답: e2e4 또는 make_move(&quot;e2e4&quot;)" value={active.llm_input.clone()} oninput={ctx.link().callback(|e: InputEvent| Msg::SetLlmInput(e.target_unchecked_into::<HtmlTextAreaElement>().value()))} /><button class="primary" onclick={ctx.link().callback(|_| Msg::SubmitLlm)}>{"응답 검증 후 두기"}</button></div>}
                 } else {
-                    html!{<div class="card"><h2>{if kind=="stockfish" {"Stockfish 계산 중"} else if active.record.result.is_some() {"대국 완료"} else {"보드에서 수를 선택하세요"}}</h2><p>{if kind=="human" {"출발 칸과 도착 칸을 차례로 누르세요."} else {"엔진 분석은 자동 표시하지 않으며, 직접 요청하거나 기록 리뷰에서만 실행됩니다."}}</p></div>}
+                    html!{<div class="card"><h2>{if kind=="stockfish" {"Stockfish 계산 중"} else if active.record.result.is_some() {"대국 완료"} else {"보드에서 수를 선택하세요"}}</h2><p>{if kind=="human" {"출발·도착 칸을 차례로 누르거나 말을 원하는 칸으로 드래그하세요."} else {"엔진 분석은 자동 표시하지 않으며, 직접 요청하거나 기록 리뷰에서만 실행됩니다."}}</p></div>}
                 }}
             </div>
         </section> }
