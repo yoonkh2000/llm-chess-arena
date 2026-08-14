@@ -34,11 +34,19 @@ struct MatchState {
     chess: ChessGame,
     record: GameRecord,
     selected: Option<String>,
+    pending_promotion: Option<PendingPromotion>,
     llm_input: String,
     notice: String,
     invalid_attempts: u8,
     pending_attempts: Vec<Attempt>,
     waiting_engine: bool,
+}
+
+#[derive(Clone)]
+struct PendingPromotion {
+    from: String,
+    to: String,
+    choices: Vec<char>,
 }
 
 pub struct App {
@@ -54,6 +62,7 @@ pub struct App {
     human_two: String,
     llm_one: String,
     llm_two: String,
+    quick_llm_name: String,
     engine_elo: i32,
     profile_kind: PlayerKind,
     profile_name: String,
@@ -64,6 +73,7 @@ pub struct App {
     _worker_callback: Option<Closure<dyn FnMut(MessageEvent)>>,
     review_game: Option<uuid::Uuid>,
     review_index: usize,
+    review_cursor: usize,
     review_line: EngineLine,
     review_busy: bool,
     position_analysis: Option<EngineLine>,
@@ -81,6 +91,8 @@ pub enum Msg {
     SetHumanTwo(String),
     SetLlmOne(String),
     SetLlmTwo(String),
+    SetQuickLlmName(String),
+    AddQuickLlm,
     SetEngineElo(String),
     StartGame,
     NewMatch,
@@ -88,6 +100,8 @@ pub enum Msg {
     DragStart(String),
     DropSquare(String),
     DragEnd,
+    ChoosePromotion(char),
+    CancelPromotion,
     SetLlmInput(String),
     SubmitLlm,
     Resign,
@@ -104,6 +118,8 @@ pub enum Msg {
     ExportJson,
     ExportPgn(uuid::Uuid),
     StartReview(uuid::Uuid),
+    ReviewPrevious,
+    ReviewNext,
     CopyCoach(uuid::Uuid, bool),
     SetCoaching(uuid::Uuid, String),
     Copy(String),
@@ -148,6 +164,7 @@ impl Component for App {
             human_two: String::new(),
             llm_one: String::new(),
             llm_two: String::new(),
+            quick_llm_name: String::new(),
             engine_elo: 1500,
             profile_kind: PlayerKind::Llm,
             profile_name: String::new(),
@@ -158,6 +175,7 @@ impl Component for App {
             _worker_callback: callback,
             review_game: None,
             review_index: 0,
+            review_cursor: 0,
             review_line: EngineLine::default(),
             review_busy: false,
             position_analysis: None,
@@ -193,6 +211,7 @@ impl Component for App {
                                     chess,
                                     record,
                                     selected: None,
+                                    pending_promotion: None,
                                     llm_input: String::new(),
                                     notice: "저장된 대국을 이어갑니다.".into(),
                                     invalid_attempts: 0,
@@ -232,6 +251,33 @@ impl Component for App {
             Msg::SetHumanTwo(value) => self.human_two = value,
             Msg::SetLlmOne(value) => self.llm_one = value,
             Msg::SetLlmTwo(value) => self.llm_two = value,
+            Msg::SetQuickLlmName(value) => self.quick_llm_name = value,
+            Msg::AddQuickLlm => {
+                let name = self.quick_llm_name.trim().to_owned();
+                if name.is_empty() {
+                    self.status = "추가할 LLM 이름을 입력해 주세요.".into();
+                } else {
+                    let id = if let Some(profile) = self
+                        .data
+                        .profiles
+                        .iter_mut()
+                        .find(|profile| profile.kind == PlayerKind::Llm && profile.name == name)
+                    {
+                        profile.active = true;
+                        profile.id
+                    } else {
+                        let profile =
+                            PlayerProfile::new(PlayerKind::Llm, &name, "대국 설정에서 추가");
+                        let id = profile.id;
+                        self.data.profiles.push(profile);
+                        id
+                    };
+                    self.llm_one = id.to_string();
+                    self.quick_llm_name.clear();
+                    self.status = format!("LLM 프로필 ‘{name}’을 선택했습니다.");
+                    should_save = true;
+                }
+            }
             Msg::SetEngineElo(value) => {
                 if let Ok(elo) = value.parse() {
                     self.engine_elo = elo;
@@ -274,6 +320,7 @@ impl Component for App {
                 if let Some(active) = self.active.as_mut()
                     && active.record.result.is_none()
                     && participant_kind(active) == "human"
+                    && active.pending_promotion.is_none()
                     && active
                         .chess
                         .legal_moves()
@@ -296,6 +343,33 @@ impl Component for App {
             Msg::DragEnd => {
                 if let Some(active) = self.active.as_mut() {
                     active.selected = None;
+                }
+            }
+            Msg::ChoosePromotion(choice) => {
+                let mut moved = false;
+                if let Some(active) = self.active.as_mut()
+                    && let Some(pending) = active.pending_promotion.take()
+                {
+                    if pending.choices.contains(&choice) {
+                        let uci = format!("{}{}{}", pending.from, pending.to, choice);
+                        match play_move(active, &uci, None, vec![]) {
+                            Ok(()) => moved = true,
+                            Err(error) => active.notice = error,
+                        }
+                    } else {
+                        active.pending_promotion = Some(pending);
+                    }
+                }
+                if moved {
+                    self.finish_human_move();
+                    should_save = true;
+                }
+            }
+            Msg::CancelPromotion => {
+                if let Some(active) = self.active.as_mut() {
+                    active.pending_promotion = None;
+                    active.selected = None;
+                    active.notice = "승격 선택을 취소했습니다.".into();
                 }
             }
             Msg::SetLlmInput(value) => {
@@ -499,6 +573,7 @@ impl Component for App {
                 } else {
                     self.review_game = Some(id);
                     self.review_index = 0;
+                    self.review_cursor = 0;
                     self.review_line = EngineLine::default();
                     self.review_busy = true;
                     self.position_analysis = None;
@@ -507,6 +582,20 @@ impl Component for App {
                         game.review.clear();
                     }
                     self.request_review_position();
+                }
+            }
+            Msg::ReviewPrevious => {
+                self.review_cursor = self.review_cursor.saturating_sub(1);
+            }
+            Msg::ReviewNext => {
+                if let Some(game) = self
+                    .review_game
+                    .and_then(|id| self.data.games.iter().find(|game| game.id == id))
+                {
+                    let available = game.review.len().min(game.moves.len());
+                    if self.review_cursor + 1 < available {
+                        self.review_cursor += 1;
+                    }
                 }
             }
             Msg::CopyCoach(id, engine) => {
@@ -570,12 +659,25 @@ impl App {
             if active.record.result.is_some() || participant_kind(active) != "human" {
                 return false;
             }
+            if active.pending_promotion.is_some() {
+                active.notice = "먼저 승격할 기물을 선택하거나 취소해 주세요.".into();
+                return false;
+            }
             if let Some(from) = active.selected.take() {
-                let mut uci = format!("{from}{square}");
-                if !active.chess.legal_moves().contains(&uci)
-                    && active.chess.legal_moves().contains(&format!("{uci}q"))
-                {
-                    uci.push('q');
+                let uci = format!("{from}{square}");
+                let legal_moves = active.chess.legal_moves();
+                let choices = ['q', 'r', 'b', 'n']
+                    .into_iter()
+                    .filter(|piece| legal_moves.contains(&format!("{uci}{piece}")))
+                    .collect::<Vec<_>>();
+                if !choices.is_empty() {
+                    active.pending_promotion = Some(PendingPromotion {
+                        from,
+                        to: square,
+                        choices,
+                    });
+                    active.notice = "승격할 기물을 선택하세요.".into();
+                    return false;
                 }
                 if let Err(error) = play_move(active, &uci, None, vec![]) {
                     active.notice = error;
@@ -588,12 +690,16 @@ impl App {
             }
         }
         if moved {
-            self.position_analysis = None;
-            self.sync_active_record();
-            self.finish_active_if_needed();
-            self.request_engine_turn();
+            self.finish_human_move();
         }
         moved
+    }
+
+    fn finish_human_move(&mut self) {
+        self.position_analysis = None;
+        self.sync_active_record();
+        self.finish_active_if_needed();
+        self.request_engine_turn();
     }
 
     fn fill_default_selections(&mut self) {
@@ -719,6 +825,7 @@ impl App {
             chess: ChessGame::default(),
             record,
             selected: None,
+            pending_promotion: None,
             llm_input: String::new(),
             notice,
             invalid_attempts: 0,
@@ -1013,7 +1120,7 @@ impl App {
                 <label>{"대국 유형"}<select onchange={ctx.link().callback(|e: Event| Msg::SetMode(e.target_unchecked_into::<HtmlSelectElement>().value()))}>{for GameMode::ALL.map(|m| html!{<option value={mode_value(m)} selected={self.mode==m}>{m.label()}</option>})}</select></label>
                 {if needs_h1 { html!{<label>{"사람 프로필"}<select onchange={ctx.link().callback(|e: Event| Msg::SetHumanOne(e.target_unchecked_into::<HtmlSelectElement>().value()))}>{profile_options(PlayerKind::Human,&self.human_one)}</select></label>} } else {html!{}}}
                 {if needs_h2 { html!{<label>{"두 번째 사람"}<select onchange={ctx.link().callback(|e: Event| Msg::SetHumanTwo(e.target_unchecked_into::<HtmlSelectElement>().value()))}>{profile_options(PlayerKind::Human,&self.human_two)}</select></label>} } else {html!{}}}
-                {if needs_l1 { html!{<label>{"LLM 프로필"}<select onchange={ctx.link().callback(|e: Event| Msg::SetLlmOne(e.target_unchecked_into::<HtmlSelectElement>().value()))}>{profile_options(PlayerKind::Llm,&self.llm_one)}</select></label>} } else {html!{}}}
+                {if needs_l1 { html!{<><label>{"LLM 이름/프로필"}<select onchange={ctx.link().callback(|e: Event| Msg::SetLlmOne(e.target_unchecked_into::<HtmlSelectElement>().value()))}>{profile_options(PlayerKind::Llm,&self.llm_one)}</select></label><div class="quick-profile"><input aria-label="새 LLM 이름" value={self.quick_llm_name.clone()} placeholder="예: Opus 5 Extra Thinking" oninput={ctx.link().callback(|e:InputEvent|Msg::SetQuickLlmName(e.target_unchecked_into::<HtmlInputElement>().value()))}/><button onclick={ctx.link().callback(|_|Msg::AddQuickLlm)}>{"추가·선택"}</button></div></>} } else {html!{}}}
                 {if needs_l2 { html!{<label>{"두 번째 LLM"}<select onchange={ctx.link().callback(|e: Event| Msg::SetLlmTwo(e.target_unchecked_into::<HtmlSelectElement>().value()))}>{profile_options(PlayerKind::Llm,&self.llm_two)}</select></label>} } else {html!{}}}
                 <label>{"주 선수 색"}<select onchange={ctx.link().callback(|e: Event| Msg::SetSide(e.target_unchecked_into::<HtmlSelectElement>().value()))}><option value="white" selected={self.primary_side==SidePreference::White}>{"백"}</option><option value="black" selected={self.primary_side==SidePreference::Black}>{"흑"}</option><option value="random" selected={self.primary_side==SidePreference::Random}>{"랜덤"}</option></select></label>
                 {if matches!(self.mode, GameMode::HumanVsStockfish | GameMode::StockfishVsLlm) {html!{<label>{format!("Stockfish 목표 Elo · {}", self.engine_elo)}<input type="range" min="1320" max="2800" step="100" value={self.engine_elo.to_string()} oninput={ctx.link().callback(|e: InputEvent| Msg::SetEngineElo(e.target_unchecked_into::<HtmlInputElement>().value()))}/></label>}} else {html!{}}}
@@ -1052,7 +1159,7 @@ impl App {
                     let piece=pieces[index];
                     let glyph=piece.map(unicode_piece).unwrap_or("");
                     let piece_class=piece.map(|value|if value.is_ascii_uppercase(){"piece-white"}else{"piece-black"});
-                    let movable=kind=="human" && active.record.result.is_none() && piece.is_some_and(|value|match active.chess.side_to_move(){Side::White=>value.is_ascii_uppercase(),Side::Black=>value.is_ascii_lowercase()});
+                    let movable=kind=="human" && active.record.result.is_none() && active.pending_promotion.is_none() && piece.is_some_and(|value|match active.chess.side_to_move(){Side::White=>value.is_ascii_uppercase(),Side::Black=>value.is_ascii_lowercase()});
                     let click_square=square.clone();
                     let drag_square=square.clone();
                     let drop_square=square.clone();
@@ -1060,7 +1167,7 @@ impl App {
                 })}</div>
                 <div class="player white"><b>{&active.record.white.name}</b><span>{active.record.white.elo_before.map(|e| format!("Elo {e:.0}")).unwrap_or_default()}</span></div>
             </div>
-            <div class="side-stack"><div class="card"><span class="eyebrow">{active.record.mode.label()}</span><h2>{if let Some(result)=&active.record.result {format!("종료 · {result}")} else {format!("{} 차례", if active.chess.side_to_move()==Side::White {"백"} else {"흑"})}}</h2><p>{if active.notice.is_empty(){format!("{} ply · FEN은 매 수 자동 저장", active.chess.ply())}else{active.notice.clone()}}</p>{if let (Some(mv),Some((from,to)))=(last_move,last_squares){html!{<p class="last-move-info"><span>{"마지막 이동"}</span><b>{format!("{from} → {to}")}</b><small>{&mv.san}</small></p>}}else{html!{}}}<div class="moves">{for active.record.moves.iter().filter(|m| !m.uci.is_empty()).map(|m| html!{<span>{format!("{}. {}", m.ply, m.san)}</span>})}</div><div class="inline"><button onclick={ctx.link().callback(|_| Msg::Resign)} disabled={active.record.result.is_some()}>{"기권"}</button><button onclick={ctx.link().callback(|_| Msg::AgreeDraw)} disabled={active.record.result.is_some()}>{"무승부"}</button>{if active.record.result.is_some(){html!{<button class="primary" onclick={ctx.link().callback(|_|Msg::NewMatch)}>{"새 대국"}</button>}}else{html!{}}}</div><div class="analysis-request"><button disabled={active.waiting_engine||self.position_analysis_busy} onclick={ctx.link().callback(|_|Msg::AnalyzeCurrent)}>{if self.position_analysis_busy{"Stockfish 분석 중…"}else{"현재 포지션 분석"}}</button>{if let Some(line)=&self.position_analysis{html!{<p class="analysis-result"><b>{line.pv.first().map(|mv|format!("추천 수 {mv}")).unwrap_or_else(||"분석 완료".into())}</b><span>{if let Some(mate)=line.mate{format!("메이트 {mate} · depth {}",line.depth)}else{format!("현재 차례 기준 {:+}cp · depth {}",line.score_cp.unwrap_or(0),line.depth)}}</span></p>}}else{html!{<small>{"누를 때만 로컬 Stockfish가 분석합니다."}</small>}}}</div></div>
+            <div class="side-stack"><div class="card"><span class="eyebrow">{active.record.mode.label()}</span><h2>{if let Some(result)=&active.record.result {format!("종료 · {result}")} else {format!("{} 차례", if active.chess.side_to_move()==Side::White {"백"} else {"흑"})}}</h2><p>{if active.notice.is_empty(){format!("{} ply · FEN은 매 수 자동 저장", active.chess.ply())}else{active.notice.clone()}}</p>{if let Some(promotion)=&active.pending_promotion{html!{<div class="promotion-picker"><span class="eyebrow">{"PROMOTION"}</span><h3>{"승격할 기물을 선택하세요"}</h3><p>{format!("{} → {}",promotion.from,promotion.to)}</p><div class="promotion-options">{for promotion.choices.iter().map(|choice|{let choice=*choice;let label=match choice{'q'=>"퀸",'r'=>"룩",'b'=>"비숍",'n'=>"나이트",_=>"기물"};let action=if choice=='n'{format!("{label}로 승격")}else{format!("{label}으로 승격")};html!{<button aria-label={action} onclick={ctx.link().callback(move |_|Msg::ChoosePromotion(choice))}><span>{unicode_piece(choice)}</span>{label}</button>}})}</div><button class="promotion-cancel" onclick={ctx.link().callback(|_|Msg::CancelPromotion)}>{"선택 취소"}</button></div>}}else{html!{}}}{if let (Some(mv),Some((from,to)))=(last_move,last_squares){html!{<p class="last-move-info"><span>{"마지막 이동"}</span><b>{format!("{from} → {to}")}</b><small>{&mv.san}</small></p>}}else{html!{}}}<div class="moves">{for active.record.moves.iter().filter(|m| !m.uci.is_empty()).map(|m| html!{<span>{format!("{}. {}", m.ply, m.san)}</span>})}</div><div class="inline"><button onclick={ctx.link().callback(|_| Msg::Resign)} disabled={active.record.result.is_some()}>{"기권"}</button><button onclick={ctx.link().callback(|_| Msg::AgreeDraw)} disabled={active.record.result.is_some()}>{"무승부"}</button>{if active.record.result.is_some(){html!{<button class="primary" onclick={ctx.link().callback(|_|Msg::NewMatch)}>{"새 대국"}</button>}}else{html!{}}}</div><div class="analysis-request"><button disabled={active.waiting_engine||self.position_analysis_busy||active.pending_promotion.is_some()} onclick={ctx.link().callback(|_|Msg::AnalyzeCurrent)}>{if self.position_analysis_busy{"Stockfish 분석 중…"}else{"현재 포지션 분석"}}</button>{if let Some(line)=&self.position_analysis{html!{<p class="analysis-result"><b>{line.pv.first().map(|mv|format!("추천 수 {mv}")).unwrap_or_else(||"분석 완료".into())}</b><span>{if let Some(mate)=line.mate{format!("메이트 {mate} · depth {}",line.depth)}else{format!("현재 차례 기준 {:+}cp · depth {}",line.score_cp.unwrap_or(0),line.depth)}}</span></p>}}else{html!{<small>{"누를 때만 로컬 Stockfish가 분석합니다."}</small>}}}</div></div>
                 {if let Some(prompt)=prompt {
                     html!{<div class="card prompt-card"><span class="eyebrow">{"MANUAL LLM BRIDGE"}</span><h2>{"LLM 수 입력"}</h2><textarea class="prompt" readonly=true value={prompt.clone()} /><button onclick={ctx.link().callback(move |_| Msg::Copy(prompt.clone()))}>{"프롬프트 복사"}</button><textarea placeholder="LLM 응답: e2e4 또는 make_move(&quot;e2e4&quot;)" value={active.llm_input.clone()} oninput={ctx.link().callback(|e: InputEvent| Msg::SetLlmInput(e.target_unchecked_into::<HtmlTextAreaElement>().value()))} /><button class="primary" onclick={ctx.link().callback(|_| Msg::SubmitLlm)}>{"응답 검증 후 두기"}</button></div>}
                 } else {
@@ -1128,7 +1235,21 @@ impl App {
         let selected = self
             .review_game
             .and_then(|id| self.data.games.iter().find(|g| g.id == id));
-        html! {<section class="grid two"><div><span class="eyebrow">{"OPT-IN ENGINE"}</span><h2>{"Stockfish 리뷰"}</h2><p>{"분석은 자동으로 켜지지 않습니다. 기록에서 ‘Stockfish 리뷰’를 눌렀을 때만 각 포지션을 분석합니다."}</p>{if self.review_busy{html!{<div class="progress"><span></span>{format!("분석 중 · {}번째 수",self.review_index+1)}</div>}}else{html!{}}}{if let Some(game)=selected{html!{<div class="card"><h3>{format!("{} vs {} · {}",game.white.name,game.black.name,game.result.as_deref().unwrap_or("*"))}</h3><div class="review-list">{for game.review.iter().map(|r|html!{<div><b>{format!("{} ply · {}",r.ply,r.quality)}</b><span>{format!("best {} · depth {}{}",r.best_move,r.depth,r.score_cp.map(|s|format!(" · {s:+}cp")).unwrap_or_default())}</span></div>})}</div></div>}}else{html!{<div class="empty">{"대국 기록에서 리뷰할 게임을 선택하세요."}</div>}}}</div><div><span class="eyebrow">{"LLM COACH"}</span><h2>{"코칭 프롬프트"}</h2><p>{"완료된 대국을 원하는 LLM에게 보내 한국어 코칭을 받을 수 있습니다. 엔진 리뷰 포함 여부도 직접 선택합니다."}</p>{if let Some(game)=selected{let first_id=game.id;let second_id=game.id;let response_id=game.id;html!{<div class="card"><textarea class="prompt tall" readonly=true value={coaching_prompt(game,!game.review.is_empty())} /><div class="inline"><button onclick={ctx.link().callback(move |_|Msg::CopyCoach(first_id,false))}>{"대국만 복사"}</button><button class="primary" disabled={game.review.is_empty()} onclick={ctx.link().callback(move |_|Msg::CopyCoach(second_id,true))}>{"엔진 리뷰 포함"}</button></div><label>{"LLM 코칭 답변 저장"}<textarea placeholder="받은 코칭 답변을 붙여넣으면 IndexedDB에 저장됩니다." value={game.coaching.clone().unwrap_or_default()} oninput={ctx.link().callback(move |e:InputEvent|Msg::SetCoaching(response_id,e.target_unchecked_into::<HtmlTextAreaElement>().value()))} /></label></div>}}else{html!{}}}</div></section>}
+        html! {<section><div class="section-head"><div><span class="eyebrow">{"OPT-IN ENGINE"}</span><h2>{"Stockfish 리뷰"}</h2></div>{if self.review_busy{html!{<div class="progress"><span></span>{format!("분석 중 · {}번째 수",self.review_index+1)}</div>}}else{html!{}}}</div><p>{"기록에서 리뷰를 요청한 경기만 분석합니다. 이전·다음으로 각 수 직전 포지션을 확인하세요."}</p>{if let Some(game)=selected{let first_id=game.id;let second_id=game.id;let response_id=game.id;html!{<div class="review-layout"><div>{self.view_review_position(ctx,game)}</div><div><span class="eyebrow">{"LLM COACH"}</span><h2>{"코칭 프롬프트"}</h2><p>{"완료된 대국을 원하는 LLM에게 보내 한국어 코칭을 받을 수 있습니다."}</p><div class="card"><textarea class="prompt tall" readonly=true value={coaching_prompt(game,!game.review.is_empty())} /><div class="inline"><button onclick={ctx.link().callback(move |_|Msg::CopyCoach(first_id,false))}>{"대국만 복사"}</button><button class="primary" disabled={game.review.is_empty()} onclick={ctx.link().callback(move |_|Msg::CopyCoach(second_id,true))}>{"엔진 리뷰 포함"}</button></div><label>{"LLM 코칭 답변 저장"}<textarea placeholder="받은 코칭 답변을 붙여넣으면 IndexedDB에 저장됩니다." value={game.coaching.clone().unwrap_or_default()} oninput={ctx.link().callback(move |e:InputEvent|Msg::SetCoaching(response_id,e.target_unchecked_into::<HtmlTextAreaElement>().value()))} /></label></div></div></div>}}else{html!{<div class="empty">{"대국 기록에서 ‘Stockfish 리뷰’를 선택하세요."}</div>}}}</section>}
+    }
+
+    fn view_review_position(&self, ctx: &Context<Self>, game: &GameRecord) -> Html {
+        let cursor = self.review_cursor.min(game.moves.len().saturating_sub(1));
+        let current = game.moves.get(cursor);
+        let analysis = current.and_then(|mv| game.review.iter().find(|row| row.ply == mv.ply));
+        let actual_squares = current.and_then(|mv| uci_squares(&mv.uci));
+        let best_squares = analysis.and_then(|row| uci_squares(&row.best_move));
+        let fen = current
+            .map(|mv| mv.fen_before.as_str())
+            .unwrap_or(&game.initial_fen);
+        let pieces = pieces_from_fen(fen);
+        let available = game.review.len().min(game.moves.len());
+        html! {<div class="card review-position"><h3>{format!("{} vs {} · {}",game.white.name,game.black.name,game.result.as_deref().unwrap_or("*"))}</h3><div class="review-nav"><button aria-label="이전 수" disabled={cursor==0} onclick={ctx.link().callback(|_|Msg::ReviewPrevious)}>{"← 이전"}</button><b>{if game.moves.is_empty(){"수 없음".into()}else{format!("{} / {}",cursor+1,game.moves.len())}}</b><button aria-label="다음 수" disabled={cursor+1>=available} onclick={ctx.link().callback(|_|Msg::ReviewNext)}>{"다음 →"}</button></div><div class="chessboard review-board">{for (0..64).map(|index|{let square=square_name(index);let file=((b'a'+(index%8)as u8)as char).to_string();let piece=pieces[index];let glyph=piece.map(unicode_piece).unwrap_or("");let piece_class=piece.map(|value|if value.is_ascii_uppercase(){"piece-white"}else{"piece-black"});let actual_from=actual_squares.is_some_and(|(from,_)|from==square);let actual_to=actual_squares.is_some_and(|(_,to)|to==square);let best_from=best_squares.is_some_and(|(from,_)|from==square);let best_to=best_squares.is_some_and(|(_,to)|to==square);html!{<div class={classes!("square","review-square",((index+index/8)%2==0).then_some("light"),((index+index/8)%2!=0).then_some("dark"),actual_from.then_some("actual-from"),actual_to.then_some("actual-to"),best_from.then_some("best-from"),best_to.then_some("best-to"))} aria-label={format!("리뷰 {square}")}><span class={classes!("piece",piece_class)}>{glyph}</span>{if index%8==0{html!{<small class="rank-label">{format!("{}",8-index/8)}</small>}}else{html!{}}}{if index/8==7{html!{<small class="file-label">{file}</small>}}else{html!{}}}</div>}})}</div><div class="review-legend"><span class="actual-key">{"실제 이동"}</span><span class="best-key">{"Stockfish 추천"}</span></div>{if let Some(mv)=current{html!{<div class="review-comparison"><div><span>{"실제 수"}</span><b>{actual_squares.map(|(from,to)|format!("{from} → {to}")).unwrap_or_else(||mv.uci.clone())}</b><small>{format!("{} · {}",mv.san,analysis.map(|row|row.quality.as_str()).unwrap_or("분석 중"))}</small></div><div class="recommendation"><span>{"더 좋은 수"}</span>{if let Some(row)=analysis{html!{<><b>{best_squares.map(|(from,to)|format!("{from} → {to}")).unwrap_or_else(||row.best_move.clone())}</b><small>{format!("depth {}{}",row.depth,row.score_cp.map(|score|format!(" · {score:+}cp")).unwrap_or_default())}</small></>}}else{html!{<b>{"Stockfish 분석 중…"}</b>}}}</div></div>}}else{html!{<div class="empty">{"기록된 수가 없습니다."}</div>}}}{if let Some(row)=analysis{html!{<p class="review-pv">{format!("추천 진행: {}",row.pv.join(" "))}</p>}}else{html!{}}}</div>}
     }
 
     fn view_profiles(&self, ctx: &Context<Self>) -> Html {
@@ -1181,6 +1302,11 @@ fn participant_kind(active: &MatchState) -> &str {
         &active.record.black.kind
     }
 }
+
+fn uci_squares(uci: &str) -> Option<(&str, &str)> {
+    Some((uci.get(0..2)?, uci.get(2..4)?))
+}
+
 fn set_result(active: &mut MatchState, result: &str, termination: &str) {
     active.record.result = Some(result.into());
     active.record.termination = Some(termination.into());

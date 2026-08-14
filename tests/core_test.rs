@@ -54,6 +54,16 @@ fn chess_core_validates_and_ends_a_game() {
 }
 
 #[test]
+fn promotion_requires_an_explicit_piece_suffix() {
+    let game = ChessGame::from_fen("7k/P7/8/8/8/8/8/7K w - - 0 1").unwrap();
+    let legal = game.legal_moves();
+    assert!(!legal.contains(&"a7a8".to_string()));
+    for promotion in ["a7a8q", "a7a8r", "a7a8b", "a7a8n"] {
+        assert!(legal.contains(&promotion.to_string()));
+    }
+}
+
+#[test]
 fn parses_common_llm_and_engine_responses() {
     assert_eq!(
         parse_llm_response("{\"move\":\"e2e4\"}").unwrap().uci,
