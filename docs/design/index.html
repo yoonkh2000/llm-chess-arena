@@ -1,0 +1,812 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="LLM Chess Arena의 제품 및 기술 설계 명세">
+  <title>LLM Chess Arena Design</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="header-tools">
+      <p class="eyebrow">Rust · Yew · WebAssembly · Stockfish</p>
+      <a class="language-switch" href="ko/">한국어</a>
+    </div>
+    <h1>LLM Chess Arena Design</h1>
+    <p class="lede">A local-first chess arena where humans, LLMs, and
+Stockfish can play, record, and learn</p>
+  </header>
+  <nav aria-label="문서 목차">
+<ul>
+<li><a href="#llm-chess-arena-design"
+id="toc-llm-chess-arena-design">LLM Chess Arena Design</a>
+<ul>
+<li><a href="#1-summary" id="toc-1-summary">1. Summary</a></li>
+<li><a href="#2-goals" id="toc-2-goals">2. Goals</a></li>
+<li><a href="#3-non-goals" id="toc-3-non-goals">3. Non-goals</a></li>
+<li><a href="#4-terminology-and-rating-separation"
+id="toc-4-terminology-and-rating-separation">4. Terminology and rating
+separation</a></li>
+<li><a href="#5-technology-and-delivery-architecture"
+id="toc-5-technology-and-delivery-architecture">5. Technology and
+delivery architecture</a>
+<ul>
+<li><a href="#51-stack" id="toc-51-stack">5.1 Stack</a></li>
+<li><a href="#52-runtime-components" id="toc-52-runtime-components">5.2
+Runtime components</a></li>
+<li><a href="#53-static-deployment" id="toc-53-static-deployment">5.3
+Static deployment</a></li>
+</ul></li>
+<li><a href="#6-chess-domain-and-match-state-machine"
+id="toc-6-chess-domain-and-match-state-machine">6. Chess domain and
+match state machine</a>
+<ul>
+<li><a href="#61-domain-authority" id="toc-61-domain-authority">6.1
+Domain authority</a></li>
+<li><a href="#62-match-states" id="toc-62-match-states">6.2 Match
+states</a></li>
+<li><a href="#63-game-modes" id="toc-63-game-modes">6.3 Game
+modes</a></li>
+<li><a href="#64-completion-and-failure-results"
+id="toc-64-completion-and-failure-results">6.4 Completion and failure
+results</a></li>
+</ul></li>
+<li><a href="#7-manual-llm-prompt-bridge"
+id="toc-7-manual-llm-prompt-bridge">7. Manual LLM prompt bridge</a>
+<ul>
+<li><a href="#71-general-contract" id="toc-71-general-contract">7.1
+General contract</a></li>
+<li><a href="#72-arena-direct-prompt"
+id="toc-72-arena-direct-prompt">7.2 Arena Direct prompt</a></li>
+<li><a href="#73-paper-benchmark-prompt"
+id="toc-73-paper-benchmark-prompt">7.3 Paper Benchmark prompt</a></li>
+<li><a href="#74-reflection-prompts" id="toc-74-reflection-prompts">7.4
+Reflection prompts</a></li>
+<li><a href="#75-coaching-prompt" id="toc-75-coaching-prompt">7.5
+Coaching prompt</a></li>
+</ul></li>
+<li><a href="#8-stockfish-integration"
+id="toc-8-stockfish-integration">8. Stockfish integration</a>
+<ul>
+<li><a href="#81-engine-lifecycle" id="toc-81-engine-lifecycle">8.1
+Engine lifecycle</a></li>
+<li><a href="#82-opponent-mode" id="toc-82-opponent-mode">8.2 Opponent
+mode</a></li>
+<li><a href="#83-review-mode" id="toc-83-review-mode">8.3 Review
+mode</a></li>
+<li><a href="#84-move-quality" id="toc-84-move-quality">8.4 Move
+quality</a></li>
+</ul></li>
+<li><a href="#9-persistence-and-export"
+id="toc-9-persistence-and-export">9. Persistence and export</a>
+<ul>
+<li><a href="#91-storage-location" id="toc-91-storage-location">9.1
+Storage location</a></li>
+<li><a href="#92-object-stores" id="toc-92-object-stores">9.2 Object
+stores</a></li>
+<li><a href="#93-main-records" id="toc-93-main-records">9.3 Main
+records</a></li>
+<li><a href="#94-autosave-and-atomicity"
+id="toc-94-autosave-and-atomicity">9.4 Autosave and atomicity</a></li>
+<li><a href="#95-backup-and-pgn" id="toc-95-backup-and-pgn">9.5 Backup
+and PGN</a></li>
+</ul></li>
+<li><a href="#10-rating-algorithms" id="toc-10-rating-algorithms">10.
+Rating algorithms</a>
+<ul>
+<li><a href="#101-arena-elo" id="toc-101-arena-elo">10.1 Arena
+Elo</a></li>
+<li><a href="#102-personal-elo" id="toc-102-personal-elo">10.2 Personal
+Elo</a></li>
+<li><a href="#103-fixed-opponent-benchmark-rating"
+id="toc-103-fixed-opponent-benchmark-rating">10.3 Fixed-opponent
+Benchmark Rating</a></li>
+</ul></li>
+<li><a href="#11-user-interface" id="toc-11-user-interface">11. User
+interface</a>
+<ul>
+<li><a href="#111-navigation" id="toc-111-navigation">11.1
+Navigation</a></li>
+<li><a href="#112-play-layout" id="toc-112-play-layout">11.2 Play
+layout</a></li>
+<li><a href="#113-games-and-ratings" id="toc-113-games-and-ratings">11.3
+Games and ratings</a></li>
+<li><a href="#114-review-and-coaching"
+id="toc-114-review-and-coaching">11.4 Review and coaching</a></li>
+</ul></li>
+<li><a href="#12-error-handling-and-privacy"
+id="toc-12-error-handling-and-privacy">12. Error handling and
+privacy</a></li>
+<li><a href="#13-testing-and-verification"
+id="toc-13-testing-and-verification">13. Testing and verification</a>
+<ul>
+<li><a href="#131-native-rust-tests" id="toc-131-native-rust-tests">13.1
+Native Rust tests</a></li>
+<li><a href="#132-browser-wasm-tests"
+id="toc-132-browser-wasm-tests">13.2 Browser WASM tests</a></li>
+<li><a href="#133-end-to-end-browser-tests"
+id="toc-133-end-to-end-browser-tests">13.3 End-to-end browser
+tests</a></li>
+<li><a href="#134-completion-gates" id="toc-134-completion-gates">13.4
+Completion gates</a></li>
+</ul></li>
+<li><a href="#14-ci-repository-deployment-and-licensing"
+id="toc-14-ci-repository-deployment-and-licensing">14. CI, repository,
+deployment, and licensing</a></li>
+<li><a href="#15-acceptance-scenarios"
+id="toc-15-acceptance-scenarios">15. Acceptance scenarios</a></li>
+</ul></li>
+</ul>
+  </nav>
+  <main>
+<h1 id="llm-chess-arena-design">LLM Chess Arena Design</h1>
+<p><strong>Date:</strong> 2026-08-14</p>
+<p><strong>Status:</strong> Approved design awaiting implementation-plan
+review</p>
+<p><strong>Target repository:</strong>
+<code>yoonkh2000/llm-chess-arena</code></p>
+<p><strong>Target deployment:</strong>
+<code>https://yoonkh2000.github.io/llm-chess-arena/</code></p>
+<h2 id="1-summary">1. Summary</h2>
+<p>LLM Chess Arena is a serverless Rust/Yew WebAssembly application for
+local chess games between human profiles, external LLMs, and a bundled
+Stockfish WebAssembly engine. It gives the user self-contained prompts
+to copy into any external LLM, accepts the LLM response by paste,
+validates every move locally, persists every game locally, calculates
+clearly separated rating types, and generates post-game coaching
+prompts.</p>
+<p>The design is informed by <em>LLM CHESS: Benchmarking Reasoning and
+Instruction-Following in LLMs through Chess</em> (<a
+href="https://arxiv.org/pdf/2512.01992">arXiv:2512.01992</a>). The
+product adopts the paper's UCI move contract, legal-move grounding,
+per-ply validation, failure metrics, fixed-opponent Elo estimation,
+confidence intervals, and optional Stockfish move-quality analysis. It
+deliberately adds a practical prompt mode, manual copy/paste operation,
+human play, dynamic arena ratings, local persistence, and coaching.</p>
+<h2 id="2-goals">2. Goals</h2>
+<ol type="1">
+<li>Run as a static website with no application server, account, API
+key, or network request required after the site assets are loaded.</li>
+<li>Support five game modes:
+<ul>
+<li>Human vs Human</li>
+<li>Human vs LLM</li>
+<li>LLM vs LLM</li>
+<li>Human vs Stockfish</li>
+<li>Stockfish vs LLM</li>
+</ul></li>
+<li>Generate reliable, self-contained prompts for external LLMs and
+parse pasted replies without allowing illegal moves to corrupt the
+game.</li>
+<li>Autosave active and completed games in the current browser's
+IndexedDB.</li>
+<li>Export and restore all application data as versioned JSON and export
+games as PGN.</li>
+<li>Maintain an LLM-only Arena Elo, a local Personal Elo for human
+profiles, and paper-style benchmark ratings against fixed-Elo Stockfish
+opponents.</li>
+<li>Keep Stockfish review disabled during play unless the user
+explicitly requests current-position analysis; provide full-game review
+only after the user starts it.</li>
+<li>Generate external-LLM coaching prompts with or without a Stockfish
+review and store pasted coaching responses.</li>
+<li>Publish source under GPL-3.0 to
+<code>yoonkh2000/llm-chess-arena</code> and deploy the verified static
+build to GitHub Pages.</li>
+</ol>
+<h2 id="3-non-goals">3. Non-goals</h2>
+<ul>
+<li>Calling OpenAI, Anthropic, Gemini, Ollama, or another LLM API from
+the app.</li>
+<li>Storing API keys or secrets.</li>
+<li>Cloud synchronization, authentication, shared accounts, or
+server-side backups.</li>
+<li>Real-time online multiplayer.</li>
+<li>Automatically controlling external LLM browser tabs.</li>
+<li>Claiming that Arena Elo or Personal Elo equals FIDE, Chess.com, or
+Lichess Elo.</li>
+<li>Showing an evaluation bar or a suggested move during ordinary play
+by default.</li>
+<li>Calibrating Stockfish <code>Skill Level</code> to a human Elo when
+the engine does not report a fixed <code>UCI_Elo</code> target.</li>
+</ul>
+<h2 id="4-terminology-and-rating-separation">4. Terminology and rating
+separation</h2>
+<ul>
+<li><strong>LLM profile:</strong> A locally named model identity, such
+as <code>Claude Opus 4.1</code> or <code>GPT-5 high</code>, used
+consistently across games.</li>
+<li><strong>Human profile:</strong> A local person identity. The first
+launch creates one profile named <code>나</code> with a Personal Elo of
+1200. Additional people can have independent profiles.</li>
+<li><strong>Arena Elo:</strong> A dynamic, local rating pool changed
+only by rated LLM-vs-LLM games.</li>
+<li><strong>Personal Elo:</strong> A dynamic, local rating for Human
+profiles. Human-vs-Human changes both participating Human ratings; other
+rated Human games change only the participating Human rating. Human
+games never change LLM Arena Elo or a Stockfish rating.</li>
+<li><strong>Benchmark Rating:</strong> A maximum-likelihood rating with
+a 95% confidence interval derived only from games against Stockfish
+profiles that expose a fixed target Elo.</li>
+<li><strong>Stockfish opponent:</strong> The engine automatically
+chooses a move only on its own turn and reveals no evaluation data.</li>
+<li><strong>Stockfish reviewer:</strong> The engine evaluates a
+requested current position or an entire completed game and may reveal
+evaluations and alternatives.</li>
+<li><strong>Rated game:</strong> A game explicitly marked as rated at
+creation time that ends normally or by an LLM invalid-response forfeit.
+Aborted, corrupt, engine-failed, or failed-save games are not
+rated.</li>
+</ul>
+<h2 id="5-technology-and-delivery-architecture">5. Technology and
+delivery architecture</h2>
+<h3 id="51-stack">5.1 Stack</h3>
+<ul>
+<li>Rust stable, with the repository toolchain pinned in
+<code>rust-toolchain.toml</code>.</li>
+<li>Yew 0.23 client-side rendering.</li>
+<li>Trunk for the Rust-to-WASM build, static asset bundling, local
+development, and release output.</li>
+<li><code>shakmaty</code> 0.30.x for standard chess rules, legal move
+generation, FEN, SAN, and UCI.</li>
+<li><code>serde</code> and <code>serde_json</code> for versioned
+persistence and exports.</li>
+<li><code>rexie</code> 0.6.x as the asynchronous Rust wrapper around
+IndexedDB.</li>
+<li><code>wasm-bindgen</code>, <code>web-sys</code>, and
+<code>js-sys</code> at browser boundaries.</li>
+<li><code>@lichess-org/stockfish-web</code> 0.3.0, Stockfish 18
+small-network single-thread WebAssembly build, copied as pinned local
+assets.</li>
+<li>A small JavaScript Worker adapter for loading the engine and
+forwarding typed UCI messages. All application state and UI logic remain
+in Rust.</li>
+<li>CSS owned by the repository; no required runtime CDN or third-party
+UI service.</li>
+</ul>
+<h3 id="52-runtime-components">5.2 Runtime components</h3>
+<pre class="text"><code>Yew UI
+  -&gt; Match controller
+       -&gt; Chess domain (shakmaty)
+       -&gt; Prompt builder / response parser
+       -&gt; Rating service
+       -&gt; IndexedDB repository
+       -&gt; Stockfish bridge
+            -&gt; Dedicated Web Worker
+                 -&gt; Stockfish WebAssembly</code></pre>
+<p>The match controller is a deterministic state machine. UI components
+dispatch domain commands and render state; they do not mutate chess
+state or ratings directly. IndexedDB and Stockfish are behind interfaces
+so the core behavior can be tested natively without a browser.</p>
+<h3 id="53-static-deployment">5.3 Static deployment</h3>
+<p>The release consists of HTML, CSS, JavaScript loaders, the
+application WASM, Stockfish Worker/WASM/network assets, icons, and
+license notices. It is deployed below the <code>/llm-chess-arena/</code>
+path, so all asset URLs must honor Trunk's public URL. The selected
+Stockfish build is single-threaded to avoid depending on
+cross-origin-isolation response headers that GitHub Pages cannot
+configure per repository.</p>
+<h2 id="6-chess-domain-and-match-state-machine">6. Chess domain and
+match state machine</h2>
+<h3 id="61-domain-authority">6.1 Domain authority</h3>
+<p><code>shakmaty</code> is the sole authority for move legality and the
+resulting position. The app never trusts a move because it came from an
+LLM, a UI gesture, an imported PGN, or Stockfish. Every move is
+converted in the context of the current position and rejected if
+illegal.</p>
+<p>The domain tracks:</p>
+<ul>
+<li>Current standard-chess position and full FEN.</li>
+<li>Move list in UCI and SAN.</li>
+<li>Side to move.</li>
+<li>Halfmove and fullmove counters.</li>
+<li>Repetition hashes needed for threefold/fivefold adjudication.</li>
+<li>Check, checkmate, stalemate, insufficient material, and
+claimable/automatic draw state.</li>
+<li>Maximum benchmark length of 200 plies when Paper Benchmark mode is
+selected.</li>
+</ul>
+<h3 id="62-match-states">6.2 Match states</h3>
+<pre class="text"><code>Setup
+  -&gt; AwaitingHumanMove
+  -&gt; AwaitingPromptCopy
+  -&gt; AwaitingLlmResponse
+  -&gt; ValidatingMove
+  -&gt; AwaitingEngineMove
+  -&gt; PersistingPly
+  -&gt; Finished
+  -&gt; PersistingResult</code></pre>
+<p>Recoverable error substates retain the last valid position. An
+invalid LLM response returns to <code>AwaitingLlmResponse</code>; a
+Stockfish failure offers engine restart or game abort; a save failure
+blocks rating finalization and offers retry or JSON emergency
+export.</p>
+<h3 id="63-game-modes">6.3 Game modes</h3>
+<h4 id="human-vs-human">Human vs Human</h4>
+<p>The user chooses two distinct active Human profiles, colors or random
+color assignment, and a rated flag. Both people play on the same board
+using click-click or drag-drop interaction. No LLM prompt is generated
+and Stockfish remains idle unless a player explicitly requests
+current-position analysis or starts a review after the game. A rated
+result updates both Human profiles in the Personal Elo ledger. A rematch
+can swap colors.</p>
+<h4 id="human-vs-llm">Human vs LLM</h4>
+<p>The human chooses a local Human profile, an LLM profile, color,
+prompt protocol, and rated flag. Human moves use click-click and
+drag-drop board interaction. The LLM turn uses the manual prompt bridge.
+A rated result changes only the Human profile's Personal Elo.</p>
+<h4 id="llm-vs-llm">LLM vs LLM</h4>
+<p>The user chooses two distinct LLM profiles, colors or random color
+assignment, prompt protocol, and rated flag. The UI always names the
+active LLM and gives only that player's prompt. A rematch can swap
+colors. A rated result updates both LLM profiles in the Arena Elo
+ledger.</p>
+<h4 id="human-vs-stockfish">Human vs Stockfish</h4>
+<p>The user chooses a Human profile, color, Stockfish strength mode, and
+rated flag. Stockfish moves automatically. A Target Elo result changes
+only Personal Elo; a Skill Level result is stored as unrated performance
+because it has no fixed rating anchor.</p>
+<h4 id="stockfish-vs-llm">Stockfish vs LLM</h4>
+<p>The user chooses an LLM profile, color, prompt protocol, Stockfish
+strength mode, and benchmark flag. Stockfish moves automatically; LLM
+turns use copy/paste. Target Elo games feed the LLM's Benchmark Rating
+data but do not change Arena Elo. Skill Level games contribute only
+W/D/L and instruction-following statistics.</p>
+<h3 id="64-completion-and-failure-results">6.4 Completion and failure
+results</h3>
+<p>Normal results include checkmate, stalemate, insufficient material,
+automatic repetition/75-move draw, an accepted claimable
+repetition/50-move draw, resignation, and agreed draw. Administrative
+results include LLM invalid-response forfeit, engine failure, user
+abort, maximum 200-ply benchmark draw, and persistence failure.</p>
+<p>Only normal results and LLM invalid-response forfeits can be rated.
+User abort, engine failure, and persistence failure are never rated.
+Every result stores a machine-readable termination reason and a Korean
+display label.</p>
+<h2 id="7-manual-llm-prompt-bridge">7. Manual LLM prompt bridge</h2>
+<h3 id="71-general-contract">7.1 General contract</h3>
+<p>Every turn prompt is self-contained so the user may paste it into a
+fresh external chat. The app never requests hidden chain-of-thought. It
+requests one action line and stores the entire pasted response for
+instruction-following analysis.</p>
+<p>The requested response is:</p>
+<pre class="text"><code>make_move &lt;UCI&gt;</code></pre>
+<p>The parser accepts exactly one unique legal UCI candidate from any of
+these forms:</p>
+<pre class="text"><code>e7e5
+make_move e7e5
+{&quot;move&quot;:&quot;e7e5&quot;}</code></pre>
+<p>If zero candidates or multiple distinct candidates are found, the
+response is unparseable. If one candidate is syntactically valid but
+illegal in the current position, it is an illegal move. The raw
+response, parser classification, extracted candidate, and attempt number
+are persisted.</p>
+<h3 id="72-arena-direct-prompt">7.2 Arena Direct prompt</h3>
+<p>Arena Direct is the default practical protocol. It contains:</p>
+<ul>
+<li>Player identity and assigned color.</li>
+<li>Full FEN.</li>
+<li>Coordinate-labelled ASCII board.</li>
+<li>Legal moves in UCI.</li>
+<li>Ordered move history in UCI and PGN/SAN.</li>
+<li>Game result rules and the strict one-line response contract.</li>
+</ul>
+<p>The legal-move list is always included directly. The paper's
+ablations found direct information more reliable than forcing an agent
+to make extra tool calls, and manual copy/paste has no real tool-call
+channel.</p>
+<h3 id="73-paper-benchmark-prompt">7.3 Paper Benchmark prompt</h3>
+<p>Paper Benchmark treats each ply as an independent request. It
+contains the player color, full FEN, coordinate-labelled ASCII board,
+legal UCI moves, and strict response contract, but no previous move
+history. It applies a three-invalid-response forfeit and a 200-ply cap.
+Temperature and model reasoning settings cannot be controlled by this
+app, so the game record provides editable metadata fields for the user
+to record them.</p>
+<h3 id="74-reflection-prompts">7.4 Reflection prompts</h3>
+<p>An unparseable response produces a correction prompt containing the
+response contract, current FEN, and legal UCI list. An illegal move
+produces the same data plus the rejected UCI. Neither prompt changes the
+position.</p>
+<p>Paper Benchmark forfeits the LLM after the third invalid response on
+one ply. Arena Direct shows <code>Try again</code>,
+<code>Forfeit</code>, and <code>Abort</code>; its default is to allow
+another attempt without an automatic limit, while still recording every
+failure.</p>
+<h3 id="75-coaching-prompt">7.5 Coaching prompt</h3>
+<p>The coaching prompt asks an external LLM to return concise Korean
+coaching with these sections:</p>
+<ol type="1">
+<li>Game summary.</li>
+<li>Three turning points.</li>
+<li>Tactical errors and missed opportunities.</li>
+<li>Strategic or opening-pattern weakness.</li>
+<li>Three concrete practice exercises.</li>
+</ol>
+<p>It includes the selected player's identity, color, result, PGN, and
+that player's moves. If an engine review exists, it includes up to five
+largest mover-perspective win-probability losses, the Stockfish best
+move, principal variation, and engine version/settings. Without an
+engine review it states that the advice is LLM-only and must not claim
+engine verification. The generated prompt and pasted coaching answer are
+stored separately from the immutable game record.</p>
+<h2 id="8-stockfish-integration">8. Stockfish integration</h2>
+<h3 id="81-engine-lifecycle">8.1 Engine lifecycle</h3>
+<p>The Stockfish adapter owns a dedicated Worker and supports
+<code>boot</code>, <code>ready</code>, <code>set_options</code>,
+<code>search</code>, <code>stop</code>, <code>new_game</code>, and
+<code>terminate</code>. Searches are serialized. The app never changes
+options or positions during an active search. A request ID prevents a
+late response from an old or cancelled search from updating the current
+game or review.</p>
+<p>On startup the bridge sends <code>uci</code>, parses the reported
+engine name/version and all supported option ranges, sends
+<code>isready</code>, and exposes capabilities to the Rust state.
+Unsupported controls are hidden rather than emulated.</p>
+<h3 id="82-opponent-mode">8.2 Opponent mode</h3>
+<p>Stockfish opponent mode has two strength choices:</p>
+<ul>
+<li><strong>Target Elo:</strong> Enable <code>UCI_LimitStrength</code>
+and set a <code>UCI_Elo</code> value within the range reported by the
+bundled engine.</li>
+<li><strong>Skill Level:</strong> Disable <code>UCI_LimitStrength</code>
+and set <code>Skill Level</code> from the engine-reported range,
+expected to be 0 through 20.</li>
+</ul>
+<p>The user also selects a per-move search budget: Fast 250 ms, Standard
+1000 ms, or Deliberate 3000 ms. The exact engine name, engine version,
+build asset identifier, strength mode/value, search budget, Threads, and
+Hash are stored in the game record.</p>
+<p>Opponent mode never sends evaluation lines to the visible UI. It
+waits for <code>bestmove</code>, validates the returned UCI against the
+current chess domain, persists it, and continues the match. An illegal
+or missing best move is an engine failure, not a loss by either
+player.</p>
+<h3 id="83-review-mode">8.3 Review mode</h3>
+<p>Live analysis is off by default. The user can explicitly request
+<code>현재 포지션 분석</code> during a game or start a completed-game
+review. A current-position analysis does not persist unless the user
+saves it. A full review is stored as a replaceable
+<code>EngineReview</code> record and never mutates the original
+game.</p>
+<p>Full review presets are:</p>
+<ul>
+<li>Fast: depth 10.</li>
+<li>Standard: depth 14.</li>
+<li>Precise: depth 18.</li>
+</ul>
+<p>Each reviewed ply stores pre-move evaluation, post-move evaluation,
+mover-normalized evaluation, best move, principal variation, actual
+move, mate score if present, search depth, and engine identity. Review
+progress is resumable by ply and cancellable.</p>
+<h3 id="84-move-quality">8.4 Move quality</h3>
+<p>Centipawn evaluation is normalized to White's perspective, then
+converted to the mover's perspective. For finite centipawn value
+<code>cp</code>, the paper's Lichess-derived win percentage is:</p>
+<pre class="text"><code>Win% = 50 + 50 * (2 / (1 + exp(-0.00368208 * cp)) - 1)</code></pre>
+<p>For each move, <code>delta</code> is the mover's win percentage
+before the move minus after the move. Classifications are:</p>
+<ul>
+<li>Blunder: <code>delta &gt;= 30</code>.</li>
+<li>Mistake: <code>20 &lt;= delta &lt; 30</code>.</li>
+<li>Inaccuracy: <code>10 &lt;= delta &lt; 20</code>.</li>
+<li>Best: actual UCI equals the engine's best UCI.</li>
+<li>Good: none of the above.</li>
+</ul>
+<p>Mate scores are kept as mate scores and mapped to 100% or 0% only
+when a mover-perspective win probability is required. The review UI
+displays the underlying mate distance instead of a fabricated centipawn
+number.</p>
+<h2 id="9-persistence-and-export">9. Persistence and export</h2>
+<h3 id="91-storage-location">9.1 Storage location</h3>
+<p>The production database name is <code>llm-chess-arena-v1</code> under
+the origin <code>https://yoonkh2000.github.io</code>. Development
+origins such as <code>http://localhost:8080</code> have separate
+databases and do not automatically share records. GitHub stores
+application source and release assets only; it never receives the user's
+game data.</p>
+<p>The app requests <code>navigator.storage.persist()</code> from
+Settings on an explicit user action and displays
+<code>Persistent</code>, <code>Best effort</code>, or
+<code>Unavailable</code>. It also displays usage/quota estimates when
+supported. Incognito/private browsing and explicit site-data deletion
+are clearly warned as destructive to local records.</p>
+<h3 id="92-object-stores">9.2 Object stores</h3>
+<p>Database schema version 1 has these stores:</p>
+<ul>
+<li><code>profiles</code>: <code>PlayerProfile</code> keyed by
+UUID.</li>
+<li><code>games</code>: immutable completed <code>GameRecord</code> or
+mutable active-game snapshot keyed by UUID.</li>
+<li><code>rating_events</code>: <code>RatingEvent</code> keyed by UUID
+and indexed by profile and completion time.</li>
+<li><code>engine_reviews</code>: replaceable <code>EngineReview</code>
+keyed by review UUID and indexed by game UUID.</li>
+<li><code>coaching_notes</code>: <code>CoachingNote</code> keyed by UUID
+and indexed by game UUID.</li>
+<li><code>settings</code>: user settings and backup-reminder state keyed
+by string.</li>
+</ul>
+<h3 id="93-main-records">9.3 Main records</h3>
+<p><code>PlayerProfile</code> stores UUID, kind (<code>human</code> or
+<code>llm</code>), display name, optional provider/model/reasoning
+metadata, creation time, active flag, and initial rating. Current
+ratings are derived from the ledger, not trusted as an independently
+editable value.</p>
+<p><code>GameRecord</code> stores UUID, schema version, mode, protocol,
+player snapshots, colors, rated/benchmark flags, start and finish times,
+result, termination reason, initial and final FEN, ordered plies, PGN,
+engine opponent settings if any, and save integrity state.</p>
+<p><code>PlyRecord</code> stores ply number, mover profile snapshot, FEN
+before and after, UCI, SAN, raw prompt if applicable, raw response if
+applicable, response attempts, elapsed manual-response time, and engine
+request metadata if Stockfish moved.</p>
+<p><code>RatingEvent</code> stores game UUID, rating pool, subject
+profile UUID, opponent snapshot/rating source, score, K-factor, expected
+score, rating before, rating after, and event time.</p>
+<p><code>EngineReview</code> stores game UUID, engine identity/settings,
+preset, creation time, completion state, last completed ply, and per-ply
+analyses.</p>
+<p><code>CoachingNote</code> stores game UUID, target profile UUID,
+prompt version, engine review UUID if used, generated prompt, pasted
+answer, language, and timestamps.</p>
+<h3 id="94-autosave-and-atomicity">9.4 Autosave and atomicity</h3>
+<p>Setup is saved as soon as the game starts. Every accepted move is
+persisted in one transaction before the next actor is allowed to move.
+Finishing a rated game writes the final game and all rating events in
+one transaction. If that transaction fails, the UI retains the finished
+board in memory, does not display changed ratings, and offers retry plus
+emergency JSON export.</p>
+<p>On launch, active games are listed as resumable. A resumed game
+reconstructs the position by replaying all stored UCI moves and verifies
+that every stored after-FEN matches. A mismatch marks the record corrupt
+and prevents further play while preserving export access.</p>
+<h3 id="95-backup-and-pgn">9.5 Backup and PGN</h3>
+<p>Full backup files use the extension <code>.llmchess.json</code>,
+top-level <code>schema_version: 1</code>, export timestamp, application
+version, and arrays for all stores. Import validates the complete file
+before writing. Existing UUIDs are never silently overwritten; the user
+chooses <code>Skip conflicts</code> or <code>Cancel import</code>. A
+future schema version greater than the app supports is rejected without
+mutation.</p>
+<p>PGN exports include standard tags plus
+<code>LLMChessArenaVersion</code>, <code>GameMode</code>,
+<code>PromptProtocol</code>, model metadata, Stockfish
+build/strength/search budget, and termination reason. Prompts and raw
+responses remain in JSON only so PGN stays interoperable and does not
+expose long chat content unexpectedly.</p>
+<p>The header shows games added since the last full backup and displays
+a reminder after 10 completed games or 14 days, whichever comes
+first.</p>
+<h2 id="10-rating-algorithms">10. Rating algorithms</h2>
+<h3 id="101-arena-elo">10.1 Arena Elo</h3>
+<p>Every LLM profile starts at 1200. For rated LLM-vs-LLM game score
+<code>S</code> and ratings <code>R_a</code>, <code>R_b</code>:</p>
+<pre class="text"><code>E_a = 1 / (1 + 10 ^ ((R_b - R_a) / 400))
+R_a&#39; = R_a + 32 * (S_a - E_a)
+R_b&#39; = R_b + 32 * (S_b - (1 - E_a))</code></pre>
+<p>The stored ratings keep fractional precision; the UI rounds to the
+nearest integer. Win is 1, draw 0.5, loss 0. Color is not folded into
+the dynamic update. The leaderboard separately shows white and black
+records and promotes paired color-swapped matches.</p>
+<p>Deleting a rated game or restoring a ledger rebuilds ratings
+chronologically using completion time and UUID as the deterministic
+tie-break. Rating events are regenerated and the old derived events are
+replaced transactionally.</p>
+<h3 id="102-personal-elo">10.2 Personal Elo</h3>
+<p>Every Human profile starts at 1200 and shares the local Personal Elo
+pool with other Human profiles. Personal Elo uses K=32.</p>
+<ul>
+<li>Against another Human profile, both profiles receive symmetric
+Personal Elo events using their pre-game Personal Elo ratings.</li>
+<li>Against an LLM, the opponent rating snapshot is that LLM's Arena Elo
+immediately before the game. Only the Human profile receives a Personal
+Elo event.</li>
+<li>Against Stockfish Target Elo, the opponent snapshot is the
+configured fixed target Elo. Only the Human profile receives a Personal
+Elo event.</li>
+<li>Against Stockfish Skill Level, no Personal Elo event is
+created.</li>
+</ul>
+<p>Personal Elo is labelled as a local progress indicator, not an
+official chess rating. Deleting or importing games rebuilds it with the
+same deterministic ledger rules.</p>
+<h3 id="103-fixed-opponent-benchmark-rating">10.3 Fixed-opponent
+Benchmark Rating</h3>
+<p>For each eligible Target Elo game <code>i</code>, let opponent rating
+be <code>R_i</code>, player score be <code>S_i</code>, and color
+adjustment <code>C_i</code> be +35 when the rated subject played White
+and -35 when the subject played Black. For neutral player rating
+<code>R</code>:</p>
+<pre class="text"><code>E_i(R) = 1 / (1 + 10 ^ ((R_i - (R + C_i)) / 400))</code></pre>
+<p>The estimate solves <code>sum(S_i - E_i(R)) = 0</code> by bisection
+within <code>[min(R_i)-400, max(R_i)+400]</code>. Fisher information and
+the confidence interval are:</p>
+<pre class="text"><code>I(R) = sum(E_i(R) * (1 - E_i(R)) * (ln(10)/400)^2)
+SE = 1 / sqrt(I(R))
+95% CI = R +/- 1.96 * SE</code></pre>
+<p>The UI starts showing an estimate after five eligible games, labels
+fewer than 30 games <code>low sample</code>, and recommends at least 30
+games per target strength. If all results force the root to a search
+boundary, the UI reports a boundary estimate and one-sided direction
+instead of pretending the estimate is well determined.</p>
+<p>Benchmark Rating is available independently for LLM and Human
+profiles. It is computed from game records on demand and is not stored
+as mutable profile state.</p>
+<h2 id="11-user-interface">11. User interface</h2>
+<h3 id="111-navigation">11.1 Navigation</h3>
+<p>The responsive application has five top-level destinations:</p>
+<ul>
+<li><code>Play</code>: create and continue games.</li>
+<li><code>Games</code>: search active/completed records and export
+PGN/JSON.</li>
+<li><code>Leaderboard</code>: LLM Arena Elo plus W/D/L, color splits,
+and invalid-response rate.</li>
+<li><code>Review</code>: open a completed game, optionally run
+Stockfish, and create coaching prompts.</li>
+<li><code>Settings</code>: profiles, storage status, backup/restore,
+defaults, licenses, and paper attribution.</li>
+</ul>
+<p>Profile management creates, renames, and archives Human and LLM
+profiles. A profile referenced by a game cannot be physically deleted;
+archiving hides it from new-game selectors while preserving records and
+rating reconstruction. Two sides in Human-vs-Human and LLM-vs-LLM setup
+must use distinct active profile UUIDs.</p>
+<h3 id="112-play-layout">11.2 Play layout</h3>
+<p>Desktop uses a two-column layout: board and player/turn status on the
+left, turn workbench on the right. Mobile stacks the board over the
+workbench. The workbench contains the active actor, prompt preview,
+<code>Copy prompt</code>, pasted-response textarea, validation result,
+retry/forfeit controls, move list, and save status. Version 1 is
+untimed; it records manual LLM response duration as a metric but does
+not adjudicate either Human or LLM by a chess clock.</p>
+<p>Human moves support drag-drop and click-click. Keyboard users can
+select source and destination squares, and the board exposes
+piece/square labels to assistive technology. Promotion always opens an
+explicit choice. The board can flip to the active human or selected LLM
+perspective.</p>
+<h3 id="113-games-and-ratings">11.3 Games and ratings</h3>
+<p>Games can be filtered by participant, mode, result, protocol, rated
+status, and date. The details show all raw LLM interactions without
+placing them in PGN. The Leaderboard never mixes Human Personal Elo, LLM
+Arena Elo, and Benchmark Rating in one column; each has a separate label
+and explanation.</p>
+<h3 id="114-review-and-coaching">11.4 Review and coaching</h3>
+<p>Opening Review does not start the engine. The user can navigate plies
+immediately, then choose current-position analysis or a full review
+preset. During a review, progress and cancel are visible. After
+completion, the screen shows the move list, optional evaluation graph,
+quality labels, critical positions, and
+<code>Create coaching prompt</code>.</p>
+<h2 id="12-error-handling-and-privacy">12. Error handling and
+privacy</h2>
+<ul>
+<li>Invalid LLM output cannot advance the position.</li>
+<li>An outdated Stockfish response cannot affect a newer request.</li>
+<li>Stockfish crash restarts the Worker only after user confirmation and
+never assigns a player loss automatically.</li>
+<li>IndexedDB open/version/quota failures present a blocking storage
+status with in-memory emergency export.</li>
+<li>Import is validate-first and transactionally all-or-nothing.</li>
+<li>Clipboard denial falls back to selected text and manual copy.</li>
+<li>Unsupported persistent-storage or quota APIs degrade to an
+explanatory status.</li>
+<li>No prompts, responses, names, or games are sent to analytics,
+GitHub, or any remote endpoint.</li>
+<li>The application ships no telemetry.</li>
+</ul>
+<h2 id="13-testing-and-verification">13. Testing and verification</h2>
+<h3 id="131-native-rust-tests">13.1 Native Rust tests</h3>
+<ul>
+<li>Legal/illegal UCI parsing including castling, en passant, and
+promotion.</li>
+<li>Checkmate, stalemate, repetition, move-limit, and
+insufficient-material endings.</li>
+<li>Response parser acceptance and ambiguity rejection.</li>
+<li>Arena and Personal Elo numeric examples, draw symmetry, and
+chronological rebuild.</li>
+<li>Benchmark root finding, color adjustment, confidence interval, and
+boundary cases.</li>
+<li>Prompt snapshots proving Paper Benchmark excludes history and Arena
+Direct includes it.</li>
+<li>Serialization and schema validation.</li>
+</ul>
+<h3 id="132-browser-wasm-tests">13.2 Browser WASM tests</h3>
+<ul>
+<li>IndexedDB create, autosave, resume, atomic finish, export, and
+conflict-safe restore.</li>
+<li>Clipboard fallback and downloadable JSON/PGN creation.</li>
+<li>Stockfish Worker boot, capability parsing, cancellation, request-ID
+isolation, and legal best move.</li>
+<li>Storage persistence/estimate capability fallbacks.</li>
+</ul>
+<h3 id="133-end-to-end-browser-tests">13.3 End-to-end browser tests</h3>
+<ul>
+<li>Complete a Human-vs-LLM game from setup through saved result.</li>
+<li>Complete a rated Human-vs-Human game and verify symmetric Personal
+Elo events for both profiles.</li>
+<li>Complete a rated LLM-vs-LLM game and verify both rating events.</li>
+<li>Trigger three invalid Paper Benchmark responses and verify forfeit
+semantics.</li>
+<li>Complete Human-vs-Stockfish Target Elo and verify only Personal Elo
+changes.</li>
+<li>Complete Stockfish-vs-LLM and verify Arena Elo is unchanged and
+benchmark input exists.</li>
+<li>Export, clear a test database, restore, and reproduce game/rating
+views.</li>
+<li>Confirm Review remains idle until requested, can be cancelled, and
+stores a completed review.</li>
+<li>Generate coaching prompts with and without review evidence.</li>
+<li>Verify desktop and narrow mobile layouts, keyboard board operation,
+and page reload recovery.</li>
+</ul>
+<h3 id="134-completion-gates">13.4 Completion gates</h3>
+<ul>
+<li><code>cargo fmt --check</code> passes.</li>
+<li><code>cargo clippy --all-targets --all-features -- -D warnings</code>
+passes.</li>
+<li>Native Rust tests pass.</li>
+<li>Headless browser WASM tests pass.</li>
+<li>Release build under the GitHub Pages base path succeeds.</li>
+<li>The production-like build is inspected in a real browser with no
+console errors.</li>
+<li>A GitHub Pages deployment is not called complete until the public
+URL loads the expected commit and the WASM, Stockfish Worker, and
+IndexedDB flows are verified there.</li>
+</ul>
+<h2 id="14-ci-repository-deployment-and-licensing">14. CI, repository,
+deployment, and licensing</h2>
+<p>The repository default branch is <code>main</code>. GitHub Actions
+runs formatting, clippy, native tests, browser tests, and the release
+build. The Pages workflow publishes only after all required checks pass
+on <code>main</code>.</p>
+<p>The approved design and later user-facing progress artifacts are
+rendered as navigable HTML, not delivered only as raw Markdown. The
+English design lives at <code>docs/design/index.html</code>, the
+complete Korean translation lives at
+<code>docs/design/ko/index.html</code>, and both pages provide a
+language switch. Local work is served over HTTP with a clickable preview
+URL, and the published repository links to both HTML designs from its
+README.</p>
+<p>The repository is public because it redistributes GPL-3.0 Stockfish
+assets and is intended for GitHub Pages. The whole repository uses
+GPL-3.0-only. It includes the project license, Stockfish license, exact
+Stockfish source/build pointer, third-party notices, and paper citation.
+The README is Korean-first with English setup commands and explains
+local-only data storage before the first-run instructions.</p>
+<p>Publishing uses the authenticated <code>yoonkh2000</code> GitHub
+account. Before remote creation, the workflow checks whether
+<code>yoonkh2000/llm-chess-arena</code> already exists and never
+overwrites an existing remote. The local repository is committed and
+verified first; then it is pushed, GitHub Pages is enabled, and the
+public deployment is verified separately.</p>
+<h2 id="15-acceptance-scenarios">15. Acceptance scenarios</h2>
+<p>The first release is accepted when all of the following are true:</p>
+<ol type="1">
+<li>A user can use the default <code>나</code> profile, create another
+Human profile and two LLM profiles, and complete all five supported
+match types.</li>
+<li>Every external-LLM turn provides a copyable self-contained prompt
+and accepts a valid pasted UCI response.</li>
+<li>Illegal or ambiguous responses leave the board unchanged and are
+recorded.</li>
+<li>Active games survive a normal page reload from IndexedDB.</li>
+<li>LLM-vs-LLM changes only Arena Elo; Human-vs-Human changes both Human
+Personal Elo ratings; other rated Human games change only the
+participating Human rating; Target Elo games feed Benchmark Rating;
+Skill Level games do not claim an Elo anchor.</li>
+<li>Stockfish opponent moves automatically without revealing analysis,
+while review remains opt-in.</li>
+<li>A completed game can be exported as PGN, all data can be backed
+up/restored as versioned JSON, and conflicts cannot silently overwrite
+records.</li>
+<li>A coaching prompt can be generated and its pasted answer saved both
+before and after an engine review.</li>
+<li>The public repository and GitHub Pages site are owned by
+<code>yoonkh2000</code>, identify the deployed commit, and pass the
+completion gates.</li>
+</ol>
+  </main>
+</body>
+</html>

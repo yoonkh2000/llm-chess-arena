@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="$lang$">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="LLM Chess Arena의 제품 및 기술 설계 명세">
+  <title>$title$</title>
+$for(css)$
+  <link rel="stylesheet" href="$css$">
+$endfor$
+</head>
+<body>
+  <header>
+    <div class="header-tools">
+      <p class="eyebrow">$eyebrow$</p>
+$if(switch_href)$
+      <a class="language-switch" href="$switch_href$">$switch_label$</a>
+$endif$
+    </div>
+    <h1>$title$</h1>
+    <p class="lede">$subtitle$</p>
+  </header>
+$if(toc)$
+  <nav aria-label="문서 목차">
+$toc$
+  </nav>
+$endif$
+  <main>
+$body$
+  </main>
+</body>
+</html>

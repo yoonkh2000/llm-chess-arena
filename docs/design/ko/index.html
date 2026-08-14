@@ -1,0 +1,705 @@
+<!doctype html>
+<html lang="ko-KR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="LLM Chess Arena의 제품 및 기술 설계 명세">
+  <title>LLM Chess Arena 설계</title>
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header>
+    <div class="header-tools">
+      <p class="eyebrow">Rust · Yew · WebAssembly · Stockfish</p>
+      <a class="language-switch" href="../">English</a>
+    </div>
+    <h1>LLM Chess Arena 설계</h1>
+    <p class="lede">사람, LLM, Stockfish가 함께 두고 기록하며 배우는
+로컬 퍼스트 체스 아레나</p>
+  </header>
+  <nav aria-label="문서 목차">
+<ul>
+<li><a href="#llm-chess-arena-설계" id="toc-llm-chess-arena-설계">LLM
+Chess Arena 설계</a>
+<ul>
+<li><a href="#1-개요" id="toc-1-개요">1. 개요</a></li>
+<li><a href="#2-목표" id="toc-2-목표">2. 목표</a></li>
+<li><a href="#3-제외-범위" id="toc-3-제외-범위">3. 제외 범위</a></li>
+<li><a href="#4-용어와-평점-구분" id="toc-4-용어와-평점-구분">4. 용어와
+평점 구분</a></li>
+<li><a href="#5-기술-및-배포-구조" id="toc-5-기술-및-배포-구조">5. 기술
+및 배포 구조</a>
+<ul>
+<li><a href="#51-기술-스택" id="toc-51-기술-스택">5.1 기술 스택</a></li>
+<li><a href="#52-런타임-구성요소" id="toc-52-런타임-구성요소">5.2 런타임
+구성요소</a></li>
+<li><a href="#53-정적-배포" id="toc-53-정적-배포">5.3 정적 배포</a></li>
+</ul></li>
+<li><a href="#6-체스-도메인과-대국-상태-머신"
+id="toc-6-체스-도메인과-대국-상태-머신">6. 체스 도메인과 대국 상태
+머신</a>
+<ul>
+<li><a href="#61-규칙의-단일-기준" id="toc-61-규칙의-단일-기준">6.1
+규칙의 단일 기준</a></li>
+<li><a href="#62-대국-상태" id="toc-62-대국-상태">6.2 대국 상태</a></li>
+<li><a href="#63-대국-유형" id="toc-63-대국-유형">6.3 대국 유형</a></li>
+<li><a href="#64-종료-및-실패-결과" id="toc-64-종료-및-실패-결과">6.4
+종료 및 실패 결과</a></li>
+</ul></li>
+<li><a href="#7-수동-llm-프롬프트-브리지"
+id="toc-7-수동-llm-프롬프트-브리지">7. 수동 LLM 프롬프트 브리지</a>
+<ul>
+<li><a href="#71-공통-규약" id="toc-71-공통-규약">7.1 공통 규약</a></li>
+<li><a href="#72-arena-direct-프롬프트"
+id="toc-72-arena-direct-프롬프트">7.2 Arena Direct 프롬프트</a></li>
+<li><a href="#73-paper-benchmark-프롬프트"
+id="toc-73-paper-benchmark-프롬프트">7.3 Paper Benchmark
+프롬프트</a></li>
+<li><a href="#74-수정-프롬프트" id="toc-74-수정-프롬프트">7.4 수정
+프롬프트</a></li>
+<li><a href="#75-코칭-프롬프트" id="toc-75-코칭-프롬프트">7.5 코칭
+프롬프트</a></li>
+</ul></li>
+<li><a href="#8-stockfish-연동" id="toc-8-stockfish-연동">8. Stockfish
+연동</a>
+<ul>
+<li><a href="#81-엔진-생명주기" id="toc-81-엔진-생명주기">8.1 엔진
+생명주기</a></li>
+<li><a href="#82-상대-모드" id="toc-82-상대-모드">8.2 상대 모드</a></li>
+<li><a href="#83-리뷰-모드" id="toc-83-리뷰-모드">8.3 리뷰 모드</a></li>
+<li><a href="#84-수-품질-판정" id="toc-84-수-품질-판정">8.4 수 품질
+판정</a></li>
+</ul></li>
+<li><a href="#9-저장과-내보내기" id="toc-9-저장과-내보내기">9. 저장과
+내보내기</a>
+<ul>
+<li><a href="#91-저장-위치" id="toc-91-저장-위치">9.1 저장 위치</a></li>
+<li><a href="#92-객체-저장소" id="toc-92-객체-저장소">9.2 객체
+저장소</a></li>
+<li><a href="#93-주요-레코드" id="toc-93-주요-레코드">9.3 주요
+레코드</a></li>
+<li><a href="#94-자동-저장과-원자성" id="toc-94-자동-저장과-원자성">9.4
+자동 저장과 원자성</a></li>
+<li><a href="#95-백업과-pgn" id="toc-95-백업과-pgn">9.5 백업과
+PGN</a></li>
+</ul></li>
+<li><a href="#10-평점-알고리즘" id="toc-10-평점-알고리즘">10. 평점
+알고리즘</a>
+<ul>
+<li><a href="#101-arena-elo" id="toc-101-arena-elo">10.1 Arena
+Elo</a></li>
+<li><a href="#102-personal-elo" id="toc-102-personal-elo">10.2 Personal
+Elo</a></li>
+<li><a href="#103-고정-상대-benchmark-rating"
+id="toc-103-고정-상대-benchmark-rating">10.3 고정 상대 Benchmark
+Rating</a></li>
+</ul></li>
+<li><a href="#11-사용자-화면" id="toc-11-사용자-화면">11. 사용자
+화면</a>
+<ul>
+<li><a href="#111-내비게이션" id="toc-111-내비게이션">11.1
+내비게이션</a></li>
+<li><a href="#112-대국-화면" id="toc-112-대국-화면">11.2 대국
+화면</a></li>
+<li><a href="#113-경기와-평점" id="toc-113-경기와-평점">11.3 경기와
+평점</a></li>
+<li><a href="#114-리뷰와-코칭" id="toc-114-리뷰와-코칭">11.4 리뷰와
+코칭</a></li>
+</ul></li>
+<li><a href="#12-오류-처리와-개인정보"
+id="toc-12-오류-처리와-개인정보">12. 오류 처리와 개인정보</a></li>
+<li><a href="#13-테스트와-검증" id="toc-13-테스트와-검증">13. 테스트와
+검증</a>
+<ul>
+<li><a href="#131-rust-네이티브-테스트"
+id="toc-131-rust-네이티브-테스트">13.1 Rust 네이티브 테스트</a></li>
+<li><a href="#132-브라우저-wasm-테스트"
+id="toc-132-브라우저-wasm-테스트">13.2 브라우저 WASM 테스트</a></li>
+<li><a href="#133-브라우저-e2e-테스트"
+id="toc-133-브라우저-e2e-테스트">13.3 브라우저 E2E 테스트</a></li>
+<li><a href="#134-완료-기준" id="toc-134-완료-기준">13.4 완료
+기준</a></li>
+</ul></li>
+<li><a href="#14-ci-저장소-배포-라이선스"
+id="toc-14-ci-저장소-배포-라이선스">14. CI, 저장소, 배포,
+라이선스</a></li>
+<li><a href="#15-인수-조건" id="toc-15-인수-조건">15. 인수 조건</a></li>
+</ul></li>
+</ul>
+  </nav>
+  <main>
+<h1 id="llm-chess-arena-설계">LLM Chess Arena 설계</h1>
+<p><strong>작성일:</strong> 2026-08-14</p>
+<p><strong>상태:</strong> 승인된 설계, 구현 계획 검토 대기</p>
+<p><strong>대상 저장소:</strong>
+<code>yoonkh2000/llm-chess-arena</code></p>
+<p><strong>배포 주소:</strong>
+<code>https://yoonkh2000.github.io/llm-chess-arena/</code></p>
+<h2 id="1-개요">1. 개요</h2>
+<p>LLM Chess Arena는 사람 프로필, 외부 LLM, 브라우저에 포함된 Stockfish
+WebAssembly 엔진이 로컬에서 체스를 둘 수 있는 서버 없는 Rust/Yew
+WebAssembly 애플리케이션이다. 앱은 외부 LLM에 복사할 수 있는 자기완결형
+프롬프트를 만들고, 붙여넣은 LLM 답변을 받아 모든 수를 로컬에서 검증한다.
+모든 경기와 평점은 브라우저에 저장하며, 경기 후 코칭 프롬프트도
+생성한다.</p>
+<p>설계는 <em>LLM CHESS: Benchmarking Reasoning and
+Instruction-Following in LLMs through Chess</em> (<a
+href="https://arxiv.org/pdf/2512.01992">arXiv:2512.01992</a>)를
+참고한다. 논문의 UCI 응답 규약, 합법 수 제공, 매 ply 검증, 지시 이행
+실패 지표, 고정 Elo 상대를 이용한 평점 추정과 신뢰구간, 선택적 Stockfish
+수 품질 분석을 적용한다. 실제 사용을 위해 실전 프롬프트 모드, 수동
+복사·붙여넣기, 사람 대국, 동적 아레나 Elo, 로컬 저장, 코칭 기능을
+추가한다.</p>
+<h2 id="2-목표">2. 목표</h2>
+<ol type="1">
+<li>애플리케이션 서버, 계정, API 키 없이 정적 사이트로 실행한다. 사이트
+자산을 불러온 뒤에는 네트워크 요청 없이 사용할 수 있어야 한다.</li>
+<li>다섯 가지 대국 유형을 지원한다.
+<ul>
+<li>사람 vs 사람</li>
+<li>사람 vs LLM</li>
+<li>LLM vs LLM</li>
+<li>사람 vs Stockfish</li>
+<li>Stockfish vs LLM</li>
+</ul></li>
+<li>외부 LLM용 자기완결형 프롬프트를 생성하고, 불법 수가 게임 상태를
+손상시키지 않도록 붙여넣은 답변을 검증한다.</li>
+<li>진행 중 경기와 완료된 경기를 현재 브라우저의 IndexedDB에 자동
+저장한다.</li>
+<li>전체 데이터를 버전이 포함된 JSON으로 백업·복원하고, 경기를 PGN으로
+내보낸다.</li>
+<li>LLM 전용 Arena Elo, 사람 프로필용 Personal Elo, 고정 Elo Stockfish
+상대를 이용한 논문 방식 Benchmark Rating을 서로 분리해 관리한다.</li>
+<li>Stockfish 리뷰는 기본적으로 실행하지 않는다. 사용자가 현재 포지션
+분석을 요청하거나 경기 후 전체 리뷰를 시작할 때만 실행한다.</li>
+<li>Stockfish 리뷰 유무와 관계없이 외부 LLM용 코칭 프롬프트를 만들고,
+붙여넣은 코칭 답변을 저장한다.</li>
+<li>GPL-3.0으로 소스를 공개하고
+<code>yoonkh2000/llm-chess-arena</code>와 GitHub Pages에 배포한다.</li>
+</ol>
+<h2 id="3-제외-범위">3. 제외 범위</h2>
+<ul>
+<li>OpenAI, Anthropic, Gemini, Ollama 등 LLM API 직접 호출</li>
+<li>API 키나 비밀정보 저장</li>
+<li>클라우드 동기화, 인증, 공유 계정, 서버 백업</li>
+<li>실시간 온라인 멀티플레이</li>
+<li>외부 LLM 브라우저 탭 자동 조작</li>
+<li>Arena Elo나 Personal Elo를 FIDE, Chess.com, Lichess Elo와 같은
+값이라고 주장하는 것</li>
+<li>일반 대국 중 평가 막대나 추천 수를 기본 노출하는 것</li>
+<li>엔진이 고정 <code>UCI_Elo</code>를 제공하지 않는 Stockfish
+<code>Skill Level</code>을 사람 Elo로 환산하는 것</li>
+</ul>
+<h2 id="4-용어와-평점-구분">4. 용어와 평점 구분</h2>
+<ul>
+<li><strong>LLM 프로필:</strong> <code>Claude Opus 4.1</code>,
+<code>GPT-5 high</code>처럼 여러 경기에서 동일하게 사용하는 로컬 모델
+식별자다.</li>
+<li><strong>사람 프로필:</strong> 로컬 사용자 식별자다. 최초 실행 시
+Personal Elo 1200인 <code>나</code> 프로필 하나를 자동 생성하며 다른
+사람 프로필도 추가할 수 있다.</li>
+<li><strong>Arena Elo:</strong> rated LLM-vs-LLM 경기로만 변하는 로컬
+LLM 평점 풀이다.</li>
+<li><strong>Personal Elo:</strong> 사람 프로필의 동적 로컬 평점이다.
+사람-vs-사람은 두 사람 모두 변하고, 그 외 rated 사람 경기는 참여한
+사람만 변한다. LLM Arena Elo와 Stockfish 평점은 바꾸지 않는다.</li>
+<li><strong>Benchmark Rating:</strong> 고정 Target Elo를 제공하는
+Stockfish 상대 경기만으로 계산하는 최대우도 평점과 95%
+신뢰구간이다.</li>
+<li><strong>Stockfish 상대:</strong> 자신의 차례에만 자동으로 수를
+선택하며 평가 정보는 공개하지 않는다.</li>
+<li><strong>Stockfish 리뷰어:</strong> 사용자가 요청한 현재 포지션이나
+완료된 전체 경기를 분석해 평가와 대안 수를 제공한다.</li>
+<li><strong>Rated 경기:</strong> 생성 시 rated로 지정되고 정상
+종료되거나 LLM의 불법 응답 몰수패로 끝난 경기다. 중단, 데이터 손상, 엔진
+실패, 저장 실패 경기는 rated가 아니다.</li>
+</ul>
+<h2 id="5-기술-및-배포-구조">5. 기술 및 배포 구조</h2>
+<h3 id="51-기술-스택">5.1 기술 스택</h3>
+<ul>
+<li><code>rust-toolchain.toml</code>로 고정한 Rust stable</li>
+<li>클라이언트 렌더링용 Yew 0.23</li>
+<li>Rust-to-WASM 빌드, 정적 자산 번들, 로컬 개발, 릴리스 출력을 위한
+Trunk</li>
+<li>표준 체스 규칙, 합법 수, FEN, SAN, UCI 처리를 위한
+<code>shakmaty</code> 0.30.x</li>
+<li>버전 저장과 내보내기를 위한 <code>serde</code>,
+<code>serde_json</code></li>
+<li>IndexedDB용 비동기 Rust 래퍼 <code>rexie</code> 0.6.x</li>
+<li>브라우저 경계의 <code>wasm-bindgen</code>, <code>web-sys</code>,
+<code>js-sys</code></li>
+<li>고정된 로컬 자산으로 복사하는
+<code>@lichess-org/stockfish-web</code> 0.3.0의 Stockfish 18
+small-network 단일 스레드 WASM 빌드</li>
+<li>엔진 로드와 타입이 있는 UCI 메시지 전달만 담당하는 작은 JavaScript
+Worker 어댑터</li>
+<li>런타임 CDN이나 외부 UI 서비스 없이 저장소가 직접 관리하는 CSS</li>
+</ul>
+<h3 id="52-런타임-구성요소">5.2 런타임 구성요소</h3>
+<pre class="text"><code>Yew UI
+  -&gt; 대국 컨트롤러
+       -&gt; 체스 도메인 (shakmaty)
+       -&gt; 프롬프트 생성기 / 응답 파서
+       -&gt; 평점 서비스
+       -&gt; IndexedDB 저장소
+       -&gt; Stockfish 브리지
+            -&gt; 전용 Web Worker
+                 -&gt; Stockfish WebAssembly</code></pre>
+<p>대국 컨트롤러는 결정적인 상태 머신이다. UI 컴포넌트는 도메인 명령을
+전달하고 상태를 렌더링할 뿐 체스 상태나 평점을 직접 바꾸지 않는다.
+IndexedDB와 Stockfish는 인터페이스 뒤에 두어 핵심 동작을 브라우저 없이
+Rust 네이티브 테스트로 검증할 수 있게 한다.</p>
+<h3 id="53-정적-배포">5.3 정적 배포</h3>
+<p>릴리스에는 HTML, CSS, JavaScript 로더, 앱 WASM, Stockfish
+Worker/WASM/네트워크 자산, 아이콘, 라이선스 고지가 포함된다.
+<code>/llm-chess-arena/</code> 하위에 배포하므로 모든 자산 URL은 Trunk
+public URL을 따라야 한다. GitHub Pages에서 저장소별 교차 출처 격리
+헤더를 설정할 수 없으므로 단일 스레드 Stockfish 빌드를 사용한다.</p>
+<h2 id="6-체스-도메인과-대국-상태-머신">6. 체스 도메인과 대국 상태
+머신</h2>
+<h3 id="61-규칙의-단일-기준">6.1 규칙의 단일 기준</h3>
+<p><code>shakmaty</code>만이 수의 합법성과 다음 포지션을 결정한다. LLM,
+UI 동작, 가져온 PGN, Stockfish가 제시한 수를 그대로 신뢰하지 않는다.
+모든 수를 현재 포지션 문맥에서 변환하고 불법이면 거부한다.</p>
+<p>도메인은 다음을 관리한다.</p>
+<ul>
+<li>현재 표준 체스 포지션과 전체 FEN</li>
+<li>UCI 및 SAN 수순</li>
+<li>둘 차례</li>
+<li>halfmove/fullmove 카운터</li>
+<li>3회/5회 반복 판정에 필요한 반복 해시</li>
+<li>체크, 체크메이트, 스테일메이트, 기물 부족, 요청 가능 및 자동 무승부
+상태</li>
+<li>Paper Benchmark 모드의 최대 200 ply</li>
+</ul>
+<h3 id="62-대국-상태">6.2 대국 상태</h3>
+<pre class="text"><code>설정
+  -&gt; 사람 수 대기
+  -&gt; 프롬프트 복사 대기
+  -&gt; LLM 응답 대기
+  -&gt; 수 검증
+  -&gt; 엔진 수 대기
+  -&gt; ply 저장
+  -&gt; 경기 종료
+  -&gt; 결과 저장</code></pre>
+<p>복구 가능한 오류 상태는 마지막 정상 포지션을 유지한다. 잘못된 LLM
+응답은 LLM 응답 대기로 돌아간다. Stockfish 실패 시 엔진 재시작 또는 경기
+중단을 제공한다. 저장 실패 시 평점 확정을 막고 재시도 또는 긴급 JSON
+내보내기를 제공한다.</p>
+<h3 id="63-대국-유형">6.3 대국 유형</h3>
+<h4 id="사람-vs-사람">사람 vs 사람</h4>
+<p>서로 다른 활성 사람 프로필 두 개, 색상 또는 무작위 배정, rated 여부를
+선택한다. 두 사람은 같은 체스판에서 클릭-클릭 또는 드래그 앤 드롭으로
+둔다. LLM 프롬프트는 만들지 않으며, 명시적으로 현재 포지션 분석이나 경기
+후 리뷰를 시작하지 않는 한 Stockfish는 실행하지 않는다. rated 결과는 두
+사람의 Personal Elo를 모두 갱신한다. 재대국 시 색상을 바꿀 수 있다.</p>
+<h4 id="사람-vs-llm">사람 vs LLM</h4>
+<p>사람 프로필, LLM 프로필, 색상, 프롬프트 프로토콜, rated 여부를
+선택한다. 사람은 체스판에서 두고 LLM 차례에는 수동 프롬프트 브리지를
+사용한다. rated 결과는 사람의 Personal Elo만 바꾼다.</p>
+<h4 id="llm-vs-llm">LLM vs LLM</h4>
+<p>서로 다른 LLM 프로필 두 개, 색상 또는 무작위 배정, 프롬프트 프로토콜,
+rated 여부를 선택한다. UI는 현재 응답해야 할 LLM을 항상 명시하고 해당
+선수의 프롬프트만 제공한다. 재대국 시 색상을 바꿀 수 있다. rated 결과는
+두 LLM의 Arena Elo를 갱신한다.</p>
+<h4 id="사람-vs-stockfish">사람 vs Stockfish</h4>
+<p>사람 프로필, 색상, Stockfish 강도 모드, rated 여부를 선택한다.
+Stockfish 수는 자동 진행된다. Target Elo 결과는 사람의 Personal Elo만
+바꾸고, Skill Level 결과는 고정 Elo 기준이 없으므로 unrated 성과로
+저장한다.</p>
+<h4 id="stockfish-vs-llm">Stockfish vs LLM</h4>
+<p>LLM 프로필, 색상, 프롬프트 프로토콜, Stockfish 강도 모드, benchmark
+여부를 선택한다. Stockfish는 자동으로 두고 LLM 차례에는 복사·붙여넣기를
+사용한다. Target Elo 경기는 LLM Benchmark Rating 입력에 포함하지만 Arena
+Elo는 바꾸지 않는다. Skill Level 경기는 승·무·패와 지시 이행 통계만
+남긴다.</p>
+<h3 id="64-종료-및-실패-결과">6.4 종료 및 실패 결과</h3>
+<p>정상 결과에는 체크메이트, 스테일메이트, 기물 부족, 자동 반복/75수
+무승부, 승인된 반복/50수 무승부 요청, 기권, 합의 무승부가 포함된다. 관리
+결과에는 LLM 불법 응답 몰수패, 엔진 실패, 사용자 중단, 최대 200 ply
+benchmark 무승부, 저장 실패가 포함된다.</p>
+<p>정상 결과와 LLM 불법 응답 몰수패만 rated가 될 수 있다. 사용자 중단,
+엔진 실패, 저장 실패는 rated가 아니다. 모든 결과는 기계가 읽는 종료
+사유와 한국어 표시명을 저장한다.</p>
+<h2 id="7-수동-llm-프롬프트-브리지">7. 수동 LLM 프롬프트 브리지</h2>
+<h3 id="71-공통-규약">7.1 공통 규약</h3>
+<p>모든 턴 프롬프트는 새 외부 대화에 그대로 붙여넣을 수 있도록
+자기완결형으로 만든다. 숨겨진 사고 과정은 요구하지 않는다. 하나의 행동
+행만 요청하며, 지시 이행 분석을 위해 붙여넣은 전체 응답을 저장한다.</p>
+<p>요구 응답 형식은 다음과 같다.</p>
+<pre class="text"><code>make_move &lt;UCI&gt;</code></pre>
+<p>파서는 아래 형식에서 서로 다른 합법 UCI 후보가 정확히 하나일 때만
+받아들인다.</p>
+<pre class="text"><code>e7e5
+make_move e7e5
+{&quot;move&quot;:&quot;e7e5&quot;}</code></pre>
+<p>후보가 없거나 서로 다른 후보가 둘 이상이면 파싱 불가다. 문법상 유효한
+후보 하나가 현재 포지션에서 불법이면 불법 수다. 원본 응답, 파서 분류,
+추출 후보, 시도 횟수를 저장한다.</p>
+<h3 id="72-arena-direct-프롬프트">7.2 Arena Direct 프롬프트</h3>
+<p>기본 실전 프로토콜이며 다음을 포함한다.</p>
+<ul>
+<li>선수 식별자와 색상</li>
+<li>전체 FEN</li>
+<li>좌표가 표시된 ASCII 체스판</li>
+<li>합법 UCI 수 목록</li>
+<li>UCI 수순과 PGN/SAN 기록</li>
+<li>종료 규칙과 한 줄 응답 규약</li>
+</ul>
+<p>합법 수 목록은 항상 프롬프트에 직접 포함한다. 논문의 ablation에서
+추가 도구 호출을 요구하는 것보다 정보를 직접 제공하는 편이 안정적이었고,
+수동 복사·붙여넣기에는 실제 도구 호출 채널도 없기 때문이다.</p>
+<h3 id="73-paper-benchmark-프롬프트">7.3 Paper Benchmark 프롬프트</h3>
+<p>각 ply를 독립 요청으로 취급한다. 선수 색상, 전체 FEN, 좌표형 ASCII
+체스판, 합법 UCI 수, 엄격한 응답 규약을 포함하지만 이전 수 기록은
+제외한다. 한 ply에서 불법 응답 3회 시 몰수패, 최대 200 ply를 적용한다.
+앱은 외부 모델의 temperature나 reasoning 설정을 제어할 수 없으므로
+사용자가 해당 메타데이터를 기록할 수 있게 한다.</p>
+<h3 id="74-수정-프롬프트">7.4 수정 프롬프트</h3>
+<p>파싱할 수 없는 응답에는 응답 규약, 현재 FEN, 합법 UCI 목록을 담은
+수정 프롬프트를 만든다. 불법 수에는 동일한 정보와 거부된 UCI를 추가한다.
+두 경우 모두 포지션은 바뀌지 않는다.</p>
+<p>Paper Benchmark는 같은 ply의 세 번째 불법 응답 후 LLM을 몰수패
+처리한다. Arena Direct는 <code>다시 시도</code>, <code>몰수패</code>,
+<code>중단</code>을 제공하며 기본값은 자동 제한 없이 재시도하는 것이다.
+모든 실패는 계속 기록한다.</p>
+<h3 id="75-코칭-프롬프트">7.5 코칭 프롬프트</h3>
+<p>외부 LLM이 다음 구조의 간결한 한국어 코칭을 반환하도록 요청한다.</p>
+<ol type="1">
+<li>경기 요약</li>
+<li>전환점 세 곳</li>
+<li>전술적 실수와 놓친 기회</li>
+<li>전략 또는 오프닝에서 반복된 약점</li>
+<li>구체적인 연습 과제 세 가지</li>
+</ol>
+<p>선택한 선수, 색상, 결과, PGN, 해당 선수가 둔 수를 포함한다. 엔진
+리뷰가 있으면 선수 관점 승률 감소가 가장 큰 다섯 장면, Stockfish 최선
+수, 주 변화도, 엔진 버전과 설정을 포함한다. 엔진 리뷰가 없으면 LLM 단독
+의견임을 명시하고 엔진 검증을 주장하지 못하게 한다. 생성 프롬프트와
+붙여넣은 코칭 답변은 변경 불가 경기 기록과 분리해 저장한다.</p>
+<h2 id="8-stockfish-연동">8. Stockfish 연동</h2>
+<h3 id="81-엔진-생명주기">8.1 엔진 생명주기</h3>
+<p>Stockfish 어댑터는 전용 Worker를 소유하고 <code>boot</code>,
+<code>ready</code>, <code>set_options</code>, <code>search</code>,
+<code>stop</code>, <code>new_game</code>, <code>terminate</code>를
+지원한다. 검색은 직렬화하며 검색 중 옵션이나 포지션을 바꾸지 않는다.
+요청 ID를 이용해 취소되었거나 오래된 검색 응답이 현재 경기나 리뷰를
+바꾸지 못하게 한다.</p>
+<p>시작 시 <code>uci</code>를 보내 엔진 이름·버전과 지원 옵션 범위를
+파싱하고 <code>isready</code>를 보낸다. 지원하지 않는 제어 항목은 흉내
+내지 않고 숨긴다.</p>
+<h3 id="82-상대-모드">8.2 상대 모드</h3>
+<p>두 가지 강도 방식을 제공한다.</p>
+<ul>
+<li><strong>Target Elo:</strong> <code>UCI_LimitStrength</code>를 켜고
+엔진이 보고한 범위의 <code>UCI_Elo</code>를 설정한다.</li>
+<li><strong>Skill Level:</strong> <code>UCI_LimitStrength</code>를 끄고
+엔진이 보고한 <code>Skill Level</code> 범위를 사용한다. 예상 범위는
+0–20이다.</li>
+</ul>
+<p>수당 탐색 시간은 빠름 250ms, 보통 1000ms, 정밀 3000ms 중 선택한다.
+엔진 이름, 버전, 빌드 자산 ID, 강도 모드와 값, 탐색 시간, Threads,
+Hash를 경기 기록에 저장한다.</p>
+<p>상대 모드는 평가 라인을 UI에 보여주지 않는다. <code>bestmove</code>를
+기다린 뒤 체스 도메인에서 UCI를 다시 검증하고 저장한다. 불법이거나
+누락된 best move는 선수의 패배가 아닌 엔진 실패다.</p>
+<h3 id="83-리뷰-모드">8.3 리뷰 모드</h3>
+<p>실시간 분석은 기본으로 꺼져 있다. 사용자가 대국 중
+<code>현재 포지션 분석</code>을 명시적으로 누르거나 완료된 경기 전체
+리뷰를 시작할 때만 실행한다. 현재 포지션 분석은 사용자가 저장하지 않으면
+남기지 않는다. 전체 리뷰는 교체 가능한 <code>EngineReview</code>로
+저장하고 원본 경기를 바꾸지 않는다.</p>
+<ul>
+<li>빠름: depth 10</li>
+<li>보통: depth 14</li>
+<li>정밀: depth 18</li>
+</ul>
+<p>리뷰한 각 ply에는 수 전후 평가, 선수 관점 평가, 최선 수, 주 변화도,
+실제 수, mate 점수, 탐색 depth, 엔진 식별자를 저장한다. ply 단위로
+이어서 실행하고 취소할 수 있다.</p>
+<h3 id="84-수-품질-판정">8.4 수 품질 판정</h3>
+<p>centipawn 평가는 백 관점으로 정규화한 다음 수를 둔 선수 관점으로
+변환한다. 유한한 centipawn 값 <code>cp</code>의 승률은 논문의 Lichess
+기반 식을 사용한다.</p>
+<pre class="text"><code>Win% = 50 + 50 * (2 / (1 + exp(-0.00368208 * cp)) - 1)</code></pre>
+<p>각 수의 <code>delta</code>는 수를 둔 선수 관점에서 수 전 승률에서 수
+후 승률을 뺀 값이다.</p>
+<ul>
+<li>블런더: <code>delta &gt;= 30</code></li>
+<li>실수: <code>20 &lt;= delta &lt; 30</code></li>
+<li>부정확: <code>10 &lt;= delta &lt; 20</code></li>
+<li>최선: 실제 UCI가 엔진 최선 UCI와 같음</li>
+<li>좋음: 위 조건에 해당하지 않음</li>
+</ul>
+<p>mate 점수는 그대로 보존하며 선수 관점 승률이 필요할 때만 100% 또는
+0%로 매핑한다. UI에는 가짜 centipawn 대신 mate 거리를 표시한다.</p>
+<h2 id="9-저장과-내보내기">9. 저장과 내보내기</h2>
+<h3 id="91-저장-위치">9.1 저장 위치</h3>
+<p>운영 데이터베이스 이름은 <code>llm-chess-arena-v1</code>이며 출처는
+<code>https://yoonkh2000.github.io</code>다.
+<code>http://localhost:8080</code> 같은 개발 출처는 별도 데이터베이스를
+사용하고 자동 공유하지 않는다. GitHub에는 앱 소스와 릴리스 자산만
+저장하며 사용자 경기 데이터는 전송하지 않는다.</p>
+<p>설정 화면에서 사용자가 직접 선택하면
+<code>navigator.storage.persist()</code>를 요청하고
+<code>영구 저장</code>, <code>최선 노력</code>,
+<code>지원하지 않음</code> 상태를 표시한다. 지원하는 브라우저에서는
+사용량과 할당량도 보여준다. 시크릿 모드 종료와 사이트 데이터 직접 삭제가
+로컬 기록을 지운다는 경고를 제공한다.</p>
+<h3 id="92-객체-저장소">9.2 객체 저장소</h3>
+<p>데이터베이스 스키마 버전 1은 다음 저장소를 가진다.</p>
+<ul>
+<li><code>profiles</code>: UUID가 키인 <code>PlayerProfile</code></li>
+<li><code>games</code>: UUID가 키인 완료 <code>GameRecord</code> 또는
+진행 중 스냅샷</li>
+<li><code>rating_events</code>: UUID가 키이며 프로필·완료 시각 인덱스를
+가진 <code>RatingEvent</code></li>
+<li><code>engine_reviews</code>: 리뷰 UUID가 키이고 경기 UUID 인덱스를
+가진 <code>EngineReview</code></li>
+<li><code>coaching_notes</code>: UUID가 키이고 경기 UUID 인덱스를 가진
+<code>CoachingNote</code></li>
+<li><code>settings</code>: 문자열 키를 사용하는 설정과 백업 알림
+상태</li>
+</ul>
+<h3 id="93-주요-레코드">9.3 주요 레코드</h3>
+<p><code>PlayerProfile</code>에는 UUID,
+종류(<code>human</code>/<code>llm</code>), 표시명, 선택적
+제공자·모델·reasoning 메타데이터, 생성 시각, 활성 상태, 초기 평점을
+저장한다. 현재 평점은 ledger에서 계산하며 독립적으로 편집하는 값을
+신뢰하지 않는다.</p>
+<p><code>GameRecord</code>에는 UUID, 스키마 버전, 대국 유형, 프로토콜,
+선수 스냅샷, 색상, rated/benchmark 플래그, 시작·종료 시각, 결과, 종료
+사유, 초기·최종 FEN, 순서가 있는 ply, PGN, 선택적 엔진 상대 설정, 저장
+무결성 상태를 저장한다.</p>
+<p><code>PlyRecord</code>에는 ply 번호, 선수 스냅샷, 수 전후 FEN, UCI,
+SAN, 선택적 원본 프롬프트·응답, 응답 시도 목록, 수동 응답 시간,
+Stockfish가 둔 경우 엔진 요청 메타데이터를 저장한다.</p>
+<p><code>RatingEvent</code>에는 경기 UUID, 평점 풀, 대상 프로필 UUID,
+상대 스냅샷과 평점 출처, 점수, K-factor, 기대 점수, 변경 전·후 평점,
+이벤트 시각을 저장한다.</p>
+<p><code>EngineReview</code>에는 경기 UUID, 엔진 식별자·설정, preset,
+생성 시각, 완료 상태, 마지막 완료 ply, ply별 분석을 저장한다.</p>
+<p><code>CoachingNote</code>에는 경기 UUID, 대상 프로필 UUID, 프롬프트
+버전, 사용한 리뷰 UUID, 생성 프롬프트, 붙여넣은 답변, 언어, 시각을
+저장한다.</p>
+<h3 id="94-자동-저장과-원자성">9.4 자동 저장과 원자성</h3>
+<p>경기 시작 즉시 설정을 저장하고, 합법 수를 받을 때마다 다음 선수가
+두기 전에 하나의 트랜잭션으로 저장한다. rated 경기 종료 시 최종 경기와
+모든 평점 이벤트를 하나의 트랜잭션으로 기록한다. 실패하면 종료된
+체스판을 메모리에 유지하고 평점 변경을 표시하지 않으며 재시도와 긴급
+JSON 내보내기를 제공한다.</p>
+<p>시작 화면에는 이어서 할 수 있는 진행 중 경기를 표시한다. 이어하기 시
+저장한 모든 UCI 수를 다시 적용하고 각 after-FEN이 일치하는지 검증한다.
+불일치하면 손상 레코드로 표시해 추가 진행을 막되 내보내기는
+허용한다.</p>
+<h3 id="95-백업과-pgn">9.5 백업과 PGN</h3>
+<p>전체 백업 확장자는 <code>.llmchess.json</code>이며 최상위
+<code>schema_version: 1</code>, 내보낸 시각, 앱 버전, 모든 저장소 배열을
+포함한다. 가져오기 전에 전체 파일을 검증한다. 같은 UUID는 자동 덮어쓰지
+않고 <code>충돌 건너뛰기</code> 또는 <code>가져오기 취소</code>를
+선택하게 한다. 앱이 지원하는 버전보다 새로운 스키마는 아무 변경 없이
+거부한다.</p>
+<p>PGN에는 표준 태그와 <code>LLMChessArenaVersion</code>,
+<code>GameMode</code>, <code>PromptProtocol</code>, 모델 메타데이터,
+Stockfish 빌드·강도·탐색 시간, 종료 사유를 포함한다. 긴 대화 내용이
+뜻하지 않게 노출되지 않도록 프롬프트와 원본 응답은 JSON에만
+저장한다.</p>
+<p>헤더에는 마지막 전체 백업 이후 추가된 경기 수를 표시하고, 완료 경기
+10개 또는 14일 중 먼저 도달한 시점에 백업을 알린다.</p>
+<h2 id="10-평점-알고리즘">10. 평점 알고리즘</h2>
+<h3 id="101-arena-elo">10.1 Arena Elo</h3>
+<p>모든 LLM 프로필은 1200에서 시작한다. rated LLM-vs-LLM 경기의 점수
+<code>S</code>, 평점 <code>R_a</code>, <code>R_b</code>에 다음을
+적용한다.</p>
+<pre class="text"><code>E_a = 1 / (1 + 10 ^ ((R_b - R_a) / 400))
+R_a&#39; = R_a + 32 * (S_a - E_a)
+R_b&#39; = R_b + 32 * (S_b - (1 - E_a))</code></pre>
+<p>저장 값은 소수 정밀도를 유지하고 UI에서는 가장 가까운 정수로
+반올림한다. 승 1, 무 0.5, 패 0이다. 색상은 동적 갱신 식에 넣지 않고
+리더보드에서 백·흑 성적을 분리해 보여주며 색상을 바꾼 짝수 경기를
+권장한다.</p>
+<p>rated 경기를 삭제하거나 ledger를 복원하면 완료 시각과 UUID 순으로
+평점을 다시 계산한다. 파생 평점 이벤트는 하나의 트랜잭션으로
+교체한다.</p>
+<h3 id="102-personal-elo">10.2 Personal Elo</h3>
+<p>모든 사람 프로필은 1200에서 시작해 하나의 로컬 Personal Elo 풀을
+공유하며 K=32를 사용한다.</p>
+<ul>
+<li>다른 사람과의 rated 경기에서는 경기 전 Personal Elo를 사용해 두
+프로필에 대칭 이벤트를 만든다.</li>
+<li>LLM 상대 경기에서는 경기 직전 LLM Arena Elo 스냅샷을 상대 평점으로
+사용하고 사람만 변경한다.</li>
+<li>Stockfish Target Elo 상대에서는 설정한 고정 Elo를 사용하고 사람만
+변경한다.</li>
+<li>Stockfish Skill Level 상대에서는 Personal Elo 이벤트를 만들지
+않는다.</li>
+</ul>
+<p>Personal Elo는 공식 체스 평점이 아닌 로컬 성장 지표로 표시한다.
+삭제와 가져오기 후에는 같은 결정 규칙으로 ledger를 다시 만든다.</p>
+<h3 id="103-고정-상대-benchmark-rating">10.3 고정 상대 Benchmark
+Rating</h3>
+<p>각 Target Elo 경기 <code>i</code>의 상대 평점을 <code>R_i</code>,
+선수 점수를 <code>S_i</code>, 색상 보정을 선수가 백이면 +35, 흑이면
+-35인 <code>C_i</code>라 한다. 중립 선수 평점 <code>R</code>의 기대
+점수는 다음과 같다.</p>
+<pre class="text"><code>E_i(R) = 1 / (1 + 10 ^ ((R_i - (R + C_i)) / 400))</code></pre>
+<p><code>sum(S_i - E_i(R)) = 0</code>을
+<code>[min(R_i)-400, max(R_i)+400]</code> 범위에서 이분법으로 푼다.
+Fisher 정보와 신뢰구간은 다음과 같다.</p>
+<pre class="text"><code>I(R) = sum(E_i(R) * (1 - E_i(R)) * (ln(10)/400)^2)
+SE = 1 / sqrt(I(R))
+95% CI = R +/- 1.96 * SE</code></pre>
+<p>대상 경기 5개부터 추정값을 표시하고 30개 미만은
+<code>표본 부족</code>으로 표시한다. 상대 강도마다 최소 30경기를
+권장한다. 결과가 모두 승리 또는 모두 패배여서 해가 탐색 경계에 걸리면
+확정값처럼 보이지 않도록 경계 추정과 단측 방향을 표시한다.</p>
+<p>Benchmark Rating은 LLM과 사람 프로필 모두 계산할 수 있다. 경기
+기록에서 필요할 때 계산하며 프로필의 편집 가능한 상태로 저장하지
+않는다.</p>
+<h2 id="11-사용자-화면">11. 사용자 화면</h2>
+<h3 id="111-내비게이션">11.1 내비게이션</h3>
+<ul>
+<li><code>대국</code>: 새 경기 생성과 진행 중 경기 이어하기</li>
+<li><code>기록</code>: 진행·완료 경기 검색, PGN/JSON 내보내기</li>
+<li><code>순위</code>: LLM Arena Elo, 승·무·패, 색상별 성적, 불법
+응답률</li>
+<li><code>리뷰</code>: 완료 경기 열기, 선택적 Stockfish 분석, 코칭
+프롬프트 생성</li>
+<li><code>설정</code>: 프로필, 저장 상태, 백업·복원, 기본값, 라이선스,
+논문 출처</li>
+</ul>
+<p>프로필 관리에서는 사람·LLM 프로필을 생성, 이름 변경, 보관할 수 있다.
+경기에서 참조한 프로필은 물리적으로 삭제하지 않고 보관 처리해 새 경기
+선택 목록에서만 숨긴다. 사람-vs-사람 및 LLM-vs-LLM의 양쪽에는 서로 다른
+활성 프로필 UUID를 선택해야 한다.</p>
+<h3 id="112-대국-화면">11.2 대국 화면</h3>
+<p>데스크톱은 왼쪽 체스판·선수·턴 상태, 오른쪽 턴 작업 영역의 2열이다.
+모바일은 체스판 아래에 작업 영역을 쌓는다. 작업 영역에는 현재 선수,
+프롬프트 미리보기, <code>프롬프트 복사</code>, 응답 입력, 검증 결과,
+재시도·몰수패, 수순, 저장 상태가 있다.</p>
+<p>사람은 드래그 앤 드롭과 클릭-클릭으로 둔다. 키보드로 출발·도착 칸을
+선택할 수 있고 보드에는 보조 기술용 기물·칸 레이블을 제공한다. 승격은
+항상 명시적 선택 창을 연다. 보드는 현재 사람 또는 선택한 LLM 시점으로
+뒤집을 수 있다.</p>
+<p>버전 1은 시간 제한이 없다. LLM 수동 응답 시간은 지표로 기록하지만
+사람이나 LLM을 체스 시계로 패배 처리하지 않는다.</p>
+<h3 id="113-경기와-평점">11.3 경기와 평점</h3>
+<p>참가자, 유형, 결과, 프로토콜, rated 여부, 날짜로 필터링한다. 상세
+화면에서는 PGN에 넣지 않은 LLM 원본 대화도 볼 수 있다. 순위표는 Human
+Personal Elo, LLM Arena Elo, Benchmark Rating을 한 열에 섞지 않고 각각
+이름과 설명을 붙인다.</p>
+<h3 id="114-리뷰와-코칭">11.4 리뷰와 코칭</h3>
+<p>리뷰 화면을 열어도 엔진은 시작하지 않는다. 즉시 ply를 탐색할 수
+있으며, 사용자가 현재 포지션 분석이나 전체 리뷰 preset을 고른 뒤에만
+Stockfish를 실행한다. 진행률과 취소를 표시한다. 완료 후 수순, 선택적
+평가 그래프, 품질 레이블, 주요 포지션,
+<code>코칭 프롬프트 만들기</code>를 제공한다.</p>
+<h2 id="12-오류-처리와-개인정보">12. 오류 처리와 개인정보</h2>
+<ul>
+<li>잘못된 LLM 응답은 포지션을 진행시키지 않는다.</li>
+<li>오래된 Stockfish 응답은 최신 요청에 영향을 주지 못한다.</li>
+<li>Stockfish 충돌 시 사용자 확인 후에만 Worker를 재시작하고 어느
+선수에게도 자동 패배를 주지 않는다.</li>
+<li>IndexedDB 열기·버전·할당량 오류는 저장 차단 상태와 메모리 긴급
+내보내기를 제공한다.</li>
+<li>가져오기는 전체 검증 후 하나의 트랜잭션으로 처리한다.</li>
+<li>Clipboard 권한이 거부되면 텍스트 선택과 수동 복사로 대체한다.</li>
+<li>영구 저장 및 할당량 API를 지원하지 않으면 설명 가능한 상태로
+저하한다.</li>
+<li>프롬프트, 응답, 이름, 경기를 분석 서비스, GitHub, 외부 서버로
+전송하지 않는다.</li>
+<li>텔레메트리를 포함하지 않는다.</li>
+</ul>
+<h2 id="13-테스트와-검증">13. 테스트와 검증</h2>
+<h3 id="131-rust-네이티브-테스트">13.1 Rust 네이티브 테스트</h3>
+<ul>
+<li>캐슬링, 앙파상, 승격을 포함한 합법·불법 UCI 파싱</li>
+<li>체크메이트, 스테일메이트, 반복, 수 제한, 기물 부족 종료</li>
+<li>응답 파서 허용 형식과 모호한 응답 거부</li>
+<li>Arena/Personal Elo 수치 예제, 무승부 대칭성, 시간순 재계산</li>
+<li>Benchmark 해 찾기, 색상 보정, 신뢰구간, 경계 사례</li>
+<li>Paper Benchmark의 기록 제외와 Arena Direct의 기록 포함을 확인하는
+프롬프트 snapshot</li>
+<li>직렬화와 스키마 검증</li>
+</ul>
+<h3 id="132-브라우저-wasm-테스트">13.2 브라우저 WASM 테스트</h3>
+<ul>
+<li>IndexedDB 생성, 자동 저장, 이어하기, 원자적 종료, 내보내기, 충돌
+없는 복원</li>
+<li>Clipboard 대체 동작과 JSON/PGN 다운로드</li>
+<li>Stockfish Worker 시작, 기능 파싱, 취소, 요청 ID 격리, 합법 best
+move</li>
+<li>저장 영구화·할당량 기능 대체 동작</li>
+</ul>
+<h3 id="133-브라우저-e2e-테스트">13.3 브라우저 E2E 테스트</h3>
+<ul>
+<li>사람-vs-LLM 경기 생성부터 저장된 결과까지 완료</li>
+<li>rated 사람-vs-사람 경기 후 두 프로필의 대칭 Personal Elo 이벤트
+확인</li>
+<li>rated LLM-vs-LLM 경기 후 두 Arena Elo 이벤트 확인</li>
+<li>Paper Benchmark 불법 응답 3회 후 몰수패 확인</li>
+<li>사람-vs-Stockfish Target Elo 후 Personal Elo만 변경 확인</li>
+<li>Stockfish-vs-LLM 후 Arena Elo 불변과 benchmark 입력 생성 확인</li>
+<li>내보내기, 테스트 DB 초기화, 복원 후 경기·평점 화면 재현</li>
+<li>요청 전 Review가 실행되지 않고 취소 및 완료 리뷰 저장이 가능한지
+확인</li>
+<li>엔진 리뷰 전후 코칭 프롬프트 생성</li>
+<li>데스크톱·좁은 모바일 레이아웃, 키보드 보드 조작, 새로고침 복구</li>
+</ul>
+<h3 id="134-완료-기준">13.4 완료 기준</h3>
+<ul>
+<li><code>cargo fmt --check</code> 통과</li>
+<li><code>cargo clippy --all-targets --all-features -- -D warnings</code>
+통과</li>
+<li>Rust 네이티브 테스트 통과</li>
+<li>headless 브라우저 WASM 테스트 통과</li>
+<li>GitHub Pages base path용 릴리스 빌드 성공</li>
+<li>실제 브라우저에서 콘솔 오류 없이 production-like 빌드 확인</li>
+<li>공개 URL이 예상 커밋을 로드하고 WASM, Stockfish Worker, IndexedDB
+흐름을 확인하기 전에는 GitHub Pages 배포 완료라고 하지 않음</li>
+</ul>
+<h2 id="14-ci-저장소-배포-라이선스">14. CI, 저장소, 배포, 라이선스</h2>
+<p>기본 브랜치는 <code>main</code>이다. GitHub Actions에서 포맷, clippy,
+네이티브 테스트, 브라우저 테스트, 릴리스 빌드를 실행한다. Pages
+workflow는 <code>main</code>의 필수 검사가 모두 통과한 뒤에만
+배포한다.</p>
+<p>승인된 설계와 이후 사용자용 진행 결과는 원본 Markdown만 전달하지 않고
+탐색 가능한 HTML로 렌더링한다. 한국어 설계 HTML은
+<code>docs/design/ko/index.html</code>, 영문은
+<code>docs/design/index.html</code>에 두고 서로 언어 전환 링크를
+제공한다. 로컬 작업은 클릭 가능한 HTTP 미리보기 주소로 제공하며 공개
+저장소 README에서도 HTML 설계를 연결한다.</p>
+<p>Stockfish GPL-3.0 자산을 재배포하고 GitHub Pages로 제공하므로
+저장소는 공개한다. 저장소 전체는 GPL-3.0-only를 사용한다. 프로젝트
+라이선스, Stockfish 라이선스, 정확한 Stockfish 소스·빌드 링크, 서드파티
+고지, 논문 출처를 포함한다. README는 한국어를 먼저 제공하고 영문 실행
+명령을 함께 적으며 첫 실행 설명 전에 로컬 전용 저장을 알린다.</p>
+<p>게시 시 인증된 <code>yoonkh2000</code> 계정을 사용한다. 원격 생성 전
+<code>yoonkh2000/llm-chess-arena</code>의 존재 여부를 확인하고 기존
+원격을 덮어쓰지 않는다. 로컬 저장소를 먼저 커밋·검증한 뒤 push하고
+GitHub Pages를 켠 다음 공개 배포를 별도로 검증한다.</p>
+<h2 id="15-인수-조건">15. 인수 조건</h2>
+<p>첫 릴리스는 다음을 모두 만족해야 한다.</p>
+<ol type="1">
+<li>기본 <code>나</code> 프로필, 추가 사람 프로필, LLM 프로필 두 개를
+만들고 다섯 대국 유형을 모두 완료할 수 있다.</li>
+<li>모든 외부 LLM 차례에 자기완결형 복사 프롬프트를 제공하고 붙여넣은
+합법 UCI 응답을 받을 수 있다.</li>
+<li>불법 또는 모호한 응답은 체스판을 바꾸지 않고 기록한다.</li>
+<li>IndexedDB에 저장된 진행 중 경기를 일반 새로고침 후 이어서 할 수
+있다.</li>
+<li>LLM-vs-LLM은 Arena Elo만, 사람-vs-사람은 두 Personal Elo를, 그 외
+rated 사람 경기는 참여한 사람만 변경한다. Target Elo 경기는 Benchmark
+Rating 입력이 되며 Skill Level은 고정 Elo라고 주장하지 않는다.</li>
+<li>Stockfish 상대는 분석을 공개하지 않고 자동으로 두며, 리뷰는 사용자가
+요청할 때만 실행한다.</li>
+<li>완료 경기를 PGN으로 내보내고 전체 데이터를 버전 JSON으로 백업·복원할
+수 있으며 충돌이 기존 기록을 자동 덮어쓰지 않는다.</li>
+<li>엔진 리뷰 전후에 코칭 프롬프트를 만들고 붙여넣은 답변을 저장할 수
+있다.</li>
+<li>공개 저장소와 GitHub Pages가 <code>yoonkh2000</code> 소유이고 배포
+커밋을 식별하며 모든 완료 기준을 통과한다.</li>
+</ol>
+  </main>
+</body>
+</html>
