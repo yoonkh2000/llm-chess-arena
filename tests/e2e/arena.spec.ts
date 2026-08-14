@@ -6,6 +6,8 @@ test("human and manual LLM game is validated and saved locally", async ({ page }
   await expect(page.getByText("IndexedDB에 자동 저장됩니다.")).toBeVisible();
 
   await page.getByRole("button", { name: "대국 시작" }).click();
+  await expect(page.locator(".file-label")).toHaveText(["a", "b", "c", "d", "e", "f", "g", "h"]);
+  await expect(page.locator(".rank-label")).toHaveText(["8", "7", "6", "5", "4", "3", "2", "1"]);
   const whitePawn = page.getByRole("button", { name: "e2" }).locator(".piece-white");
   const blackPawn = page.getByRole("button", { name: "e7" }).locator(".piece-black");
   await expect(whitePawn).toHaveText("♟");
