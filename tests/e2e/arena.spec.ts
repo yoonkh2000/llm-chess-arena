@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 async function installPromotionPosition(page: Page) {
-  const fen = "7k/P7/8/8/8/8/8/7K w - - 0 1";
+  const fen = "7k/Pp6/8/8/8/8/8/7K w - - 0 1";
   await page.evaluate(async (initialFen) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open("llm-chess-arena");
