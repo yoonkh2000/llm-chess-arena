@@ -29,5 +29,6 @@ test("Stockfish 18 worker automatically plays without showing analysis", async (
   await page.getByRole("button", { name: "대국 시작" }).click();
 
   await expect(page.getByRole("heading", { name: "흑 차례" })).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText("엔진 분석은 대국 중 자동 표시하지 않으며")).toBeVisible();
+  await expect(page.locator(".moves span")).toHaveCount(1);
+  await expect(page.locator(".review-list")).toHaveCount(0);
 });
