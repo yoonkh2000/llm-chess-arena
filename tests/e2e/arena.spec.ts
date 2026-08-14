@@ -27,7 +27,7 @@ test("human and manual LLM game is validated and saved locally", async ({ page }
   await expect(page.getByRole("button", { name: "e5" })).toHaveClass(/last-to/);
   await expect(page.getByRole("button", { name: "e2" })).not.toHaveClass(/last-from/);
   await expect(page.locator(".last-move-info")).toContainText("e7 → e5");
-  await expect(page.getByText(/e5/)).toBeVisible();
+  await expect(page.locator(".moves span")).toHaveText(["1. e4", "2. e5"]);
   await page.getByRole("button", { name: "현재 포지션 분석" }).click();
   await expect(page.locator(".analysis-result")).toBeVisible({ timeout: 30_000 });
   await page.getByRole("button", { name: "무승부" }).click();
