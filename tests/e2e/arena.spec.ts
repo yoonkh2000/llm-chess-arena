@@ -13,6 +13,8 @@ test("human and manual LLM game is validated and saved locally", async ({ page }
   await page.getByPlaceholder(/LLM 응답/).fill('{"move":"e7e5"}');
   await page.getByRole("button", { name: "응답 검증 후 두기" }).click();
   await expect(page.getByText(/e5/)).toBeVisible();
+  await page.getByRole("button", { name: "현재 포지션 분석" }).click();
+  await expect(page.locator(".analysis-result")).toBeVisible({ timeout: 30_000 });
   await page.getByRole("button", { name: "무승부" }).click();
   await expect(page.getByRole("heading", { name: /종료 · 1\/2-1\/2/ })).toBeVisible();
 

@@ -65,6 +65,8 @@ pub struct App {
     review_index: usize,
     review_line: EngineLine,
     review_busy: bool,
+    position_analysis: Option<EngineLine>,
+    position_analysis_busy: bool,
 }
 
 pub enum Msg {
@@ -86,6 +88,7 @@ pub enum Msg {
     SubmitLlm,
     Resign,
     AgreeDraw,
+    AnalyzeCurrent,
     Engine(String),
     SetProfileKind(String),
     SetProfileName(String),
@@ -153,6 +156,8 @@ impl Component for App {
             review_index: 0,
             review_line: EngineLine::default(),
             review_busy: false,
+            position_analysis: None,
+            position_analysis_busy: false,
         }
     }
 
@@ -232,6 +237,8 @@ impl Component for App {
                 Ok(state) => {
                     self.data.games.push(state.record.clone());
                     self.active = Some(state);
+                    self.position_analysis = None;
+                    self.position_analysis_busy = false;
                     self.status = "대국을 시작했습니다.".into();
                     self.request_engine_turn();
                     should_save = true;
@@ -245,10 +252,16 @@ impl Component for App {
                     .is_none_or(|active| active.record.result.is_some())
                 {
                     self.active = None;
+                    self.position_analysis = None;
+                    self.position_analysis_busy = false;
                     self.status = "새 대국을 설정하세요.".into();
                 }
             }
             Msg::SelectSquare(square) => {
+                if self.position_analysis_busy {
+                    self.status = "현재 포지션 분석이 끝날 때까지 잠시 기다려 주세요.".into();
+                    return true;
+                }
                 if let Some(active) = self.active.as_mut() {
                     if active.record.result.is_some() || participant_kind(active) != "human" {
                         return false;
@@ -264,6 +277,7 @@ impl Component for App {
                             active.notice = error;
                             active.selected = Some(square);
                         } else {
+                            self.position_analysis = None;
                             self.sync_active_record();
                             should_save = true;
                             self.finish_active_if_needed();
@@ -280,6 +294,10 @@ impl Component for App {
                 }
             }
             Msg::SubmitLlm => {
+                if self.position_analysis_busy {
+                    self.status = "현재 포지션 분석이 끝날 때까지 잠시 기다려 주세요.".into();
+                    return true;
+                }
                 if let Some(active) = self.active.as_mut() {
                     if active.record.result.is_some() || participant_kind(active) != "llm" {
                         return false;
@@ -302,6 +320,7 @@ impl Component for App {
                             attempts.push(attempt);
                             match play_move(active, &parsed.uci, Some(prompt), attempts.clone()) {
                                 Ok(()) => {
+                                    self.position_analysis = None;
                                     active.llm_input.clear();
                                     active.invalid_attempts = 0;
                                     self.sync_active_record();
@@ -351,20 +370,48 @@ impl Component for App {
                     self.finish_rating();
                 }
             }
+            Msg::AnalyzeCurrent => {
+                let fen = self
+                    .active
+                    .as_ref()
+                    .and_then(|active| (!active.waiting_engine).then(|| active.chess.fen()));
+                if let Some(fen) = fen {
+                    self.position_analysis = None;
+                    self.position_analysis_busy = true;
+                    self.status = "요청한 현재 포지션을 Stockfish가 분석 중입니다.".into();
+                    self.engine_commands(&[format!("position fen {fen}"), "go depth 14".into()]);
+                } else {
+                    self.status =
+                        "Stockfish가 착수 중일 때는 별도 분석을 시작할 수 없습니다.".into();
+                }
+            }
             Msg::Engine(line) => {
                 if let Some(info) = parse_info(&line) {
-                    self.review_line = info;
+                    if self.review_busy {
+                        self.review_line = info;
+                    } else if self.position_analysis_busy {
+                        self.position_analysis = Some(info);
+                    }
                 }
                 if let Some(best) = parse_bestmove(&line) {
                     if self.review_busy {
                         self.accept_review_bestmove(best);
                         should_save = true;
+                    } else if self.position_analysis_busy {
+                        self.position_analysis_busy = false;
+                        if let Some(analysis) = self.position_analysis.as_mut()
+                            && analysis.pv.is_empty()
+                        {
+                            analysis.pv.push(best);
+                        }
+                        self.status = "요청한 현재 포지션 분석을 완료했습니다.".into();
                     } else if let Some(active) = self.active.as_mut()
                         && active.waiting_engine
                         && active.record.result.is_none()
                     {
                         active.waiting_engine = false;
                         if play_move(active, &best, None, vec![]).is_ok() {
+                            self.position_analysis = None;
                             self.sync_active_record();
                             should_save = true;
                             self.finish_active_if_needed();
@@ -431,7 +478,9 @@ impl Component for App {
                 }
             }
             Msg::StartReview(id) => {
-                if self
+                if self.position_analysis_busy {
+                    self.status = "현재 포지션 분석이 끝난 뒤 전체 리뷰를 시작해 주세요.".into();
+                } else if self
                     .active
                     .as_ref()
                     .is_some_and(|active| active.record.result.is_none())
@@ -442,6 +491,7 @@ impl Component for App {
                     self.review_index = 0;
                     self.review_line = EngineLine::default();
                     self.review_busy = true;
+                    self.position_analysis = None;
                     self.view = View::Review;
                     if let Some(game) = self.data.games.iter_mut().find(|game| game.id == id) {
                         game.review.clear();
@@ -934,11 +984,11 @@ impl App {
                 <div class="chessboard">{for (0..64).map(|index| { let square=square_name(index); let selected=active.selected.as_deref()==Some(&square); let piece=pieces[index].map(unicode_piece).unwrap_or(""); html!{<button class={classes!("square", ((index+index/8)%2==0).then_some("light"), ((index+index/8)%2!=0).then_some("dark"), selected.then_some("selected"))} aria-label={square.clone()} onclick={ctx.link().callback(move |_| Msg::SelectSquare(square.clone()))}><span>{piece}</span>{if index%8==0 {html!{<small>{format!("{}", 8-index/8)}</small>}} else {html!{}}}</button>} })}</div>
                 <div class="player white"><b>{&active.record.white.name}</b><span>{active.record.white.elo_before.map(|e| format!("Elo {e:.0}")).unwrap_or_default()}</span></div>
             </div>
-            <div class="side-stack"><div class="card"><span class="eyebrow">{active.record.mode.label()}</span><h2>{if let Some(result)=&active.record.result {format!("종료 · {result}")} else {format!("{} 차례", if active.chess.side_to_move()==Side::White {"백"} else {"흑"})}}</h2><p>{if active.notice.is_empty(){format!("{} ply · FEN은 매 수 자동 저장", active.chess.ply())}else{active.notice.clone()}}</p><div class="moves">{for active.record.moves.iter().filter(|m| !m.uci.is_empty()).map(|m| html!{<span>{format!("{}. {}", m.ply, m.san)}</span>})}</div><div class="inline"><button onclick={ctx.link().callback(|_| Msg::Resign)} disabled={active.record.result.is_some()}>{"기권"}</button><button onclick={ctx.link().callback(|_| Msg::AgreeDraw)} disabled={active.record.result.is_some()}>{"무승부"}</button>{if active.record.result.is_some(){html!{<button class="primary" onclick={ctx.link().callback(|_|Msg::NewMatch)}>{"새 대국"}</button>}}else{html!{}}}</div></div>
+            <div class="side-stack"><div class="card"><span class="eyebrow">{active.record.mode.label()}</span><h2>{if let Some(result)=&active.record.result {format!("종료 · {result}")} else {format!("{} 차례", if active.chess.side_to_move()==Side::White {"백"} else {"흑"})}}</h2><p>{if active.notice.is_empty(){format!("{} ply · FEN은 매 수 자동 저장", active.chess.ply())}else{active.notice.clone()}}</p><div class="moves">{for active.record.moves.iter().filter(|m| !m.uci.is_empty()).map(|m| html!{<span>{format!("{}. {}", m.ply, m.san)}</span>})}</div><div class="inline"><button onclick={ctx.link().callback(|_| Msg::Resign)} disabled={active.record.result.is_some()}>{"기권"}</button><button onclick={ctx.link().callback(|_| Msg::AgreeDraw)} disabled={active.record.result.is_some()}>{"무승부"}</button>{if active.record.result.is_some(){html!{<button class="primary" onclick={ctx.link().callback(|_|Msg::NewMatch)}>{"새 대국"}</button>}}else{html!{}}}</div><div class="analysis-request"><button disabled={active.waiting_engine||self.position_analysis_busy} onclick={ctx.link().callback(|_|Msg::AnalyzeCurrent)}>{if self.position_analysis_busy{"Stockfish 분석 중…"}else{"현재 포지션 분석"}}</button>{if let Some(line)=&self.position_analysis{html!{<p class="analysis-result"><b>{line.pv.first().map(|mv|format!("추천 수 {mv}")).unwrap_or_else(||"분석 완료".into())}</b><span>{if let Some(mate)=line.mate{format!("메이트 {mate} · depth {}",line.depth)}else{format!("현재 차례 기준 {:+}cp · depth {}",line.score_cp.unwrap_or(0),line.depth)}}</span></p>}}else{html!{<small>{"누를 때만 로컬 Stockfish가 분석합니다."}</small>}}}</div></div>
                 {if let Some(prompt)=prompt {
                     html!{<div class="card prompt-card"><span class="eyebrow">{"MANUAL LLM BRIDGE"}</span><h2>{"LLM 수 입력"}</h2><textarea class="prompt" readonly=true value={prompt.clone()} /><button onclick={ctx.link().callback(move |_| Msg::Copy(prompt.clone()))}>{"프롬프트 복사"}</button><textarea placeholder="LLM 응답: e2e4 또는 make_move(&quot;e2e4&quot;)" value={active.llm_input.clone()} oninput={ctx.link().callback(|e: InputEvent| Msg::SetLlmInput(e.target_unchecked_into::<HtmlTextAreaElement>().value()))} /><button class="primary" onclick={ctx.link().callback(|_| Msg::SubmitLlm)}>{"응답 검증 후 두기"}</button></div>}
                 } else {
-                    html!{<div class="card"><h2>{if kind=="stockfish" {"Stockfish 계산 중"} else if active.record.result.is_some() {"대국 완료"} else {"보드에서 수를 선택하세요"}}</h2><p>{if kind=="human" {"출발 칸과 도착 칸을 차례로 누르세요."} else {"엔진 분석은 대국 중 자동 표시하지 않으며, 기록의 ‘Stockfish 리뷰’에서만 실행됩니다."}}</p></div>}
+                    html!{<div class="card"><h2>{if kind=="stockfish" {"Stockfish 계산 중"} else if active.record.result.is_some() {"대국 완료"} else {"보드에서 수를 선택하세요"}}</h2><p>{if kind=="human" {"출발 칸과 도착 칸을 차례로 누르세요."} else {"엔진 분석은 자동 표시하지 않으며, 직접 요청하거나 기록 리뷰에서만 실행됩니다."}}</p></div>}
                 }}
             </div>
         </section> }
