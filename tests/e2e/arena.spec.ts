@@ -16,10 +16,17 @@ test("human and manual LLM game is validated and saved locally", async ({ page }
   await expect(blackPawn).toHaveCSS("color", "rgb(17, 17, 17)");
   await page.getByRole("button", { name: "e2" }).click();
   await page.getByRole("button", { name: "e4" }).click();
+  await expect(page.getByRole("button", { name: "e2" })).toHaveClass(/last-from/);
+  await expect(page.getByRole("button", { name: "e4" })).toHaveClass(/last-to/);
+  await expect(page.locator(".last-move-info")).toContainText("e2 → e4");
   await expect(page.getByRole("heading", { name: "LLM 수 입력" })).toBeVisible();
 
   await page.getByPlaceholder(/LLM 응답/).fill('{"move":"e7e5"}');
   await page.getByRole("button", { name: "응답 검증 후 두기" }).click();
+  await expect(page.getByRole("button", { name: "e7" })).toHaveClass(/last-from/);
+  await expect(page.getByRole("button", { name: "e5" })).toHaveClass(/last-to/);
+  await expect(page.getByRole("button", { name: "e2" })).not.toHaveClass(/last-from/);
+  await expect(page.locator(".last-move-info")).toContainText("e7 → e5");
   await expect(page.getByText(/e5/)).toBeVisible();
   await page.getByRole("button", { name: "현재 포지션 분석" }).click();
   await expect(page.locator(".analysis-result")).toBeVisible({ timeout: 30_000 });
@@ -56,6 +63,8 @@ test("human can drag a piece to make a legal move", async ({ page }) => {
 
   await expect(target.locator(".piece-white")).toHaveText("♟");
   await expect(source.locator(".piece")).toBeEmpty();
+  await expect(source).toHaveClass(/last-from/);
+  await expect(target).toHaveClass(/last-to/);
   await expect(page.getByRole("heading", { name: "LLM 수 입력" })).toBeVisible();
   await expect(page.locator(".moves span")).toHaveText(["1. e4"]);
 });
