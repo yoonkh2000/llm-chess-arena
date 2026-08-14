@@ -29,7 +29,7 @@ LLM Chess Arena는 사람 프로필, 외부 LLM, 브라우저에 포함된 Stock
 6. LLM 전용 Arena Elo, 사람 프로필용 Personal Elo, 고정 Elo Stockfish 상대를 이용한 논문 방식 Benchmark Rating을 서로 분리해 관리한다.
 7. Stockfish 리뷰는 기본적으로 실행하지 않는다. 사용자가 현재 포지션 분석을 요청하거나 경기 후 전체 리뷰를 시작할 때만 실행한다.
 8. Stockfish 리뷰 유무와 관계없이 외부 LLM용 코칭 프롬프트를 만들고, 붙여넣은 코칭 답변을 저장한다.
-9. GPL-3.0으로 소스를 공개하고 `yoonkh2000/llm-chess-arena`와 GitHub Pages에 배포한다.
+9. AGPL-3.0-or-later로 소스를 공개하고 `yoonkh2000/llm-chess-arena`와 GitHub Pages에 배포한다.
 
 ## 3. 제외 범위
 
@@ -64,7 +64,7 @@ LLM Chess Arena는 사람 프로필, 외부 LLM, 브라우저에 포함된 Stock
 - 버전 저장과 내보내기를 위한 `serde`, `serde_json`
 - IndexedDB용 비동기 Rust 래퍼 `rexie` 0.6.x
 - 브라우저 경계의 `wasm-bindgen`, `web-sys`, `js-sys`
-- 고정된 로컬 자산으로 복사하는 `@lichess-org/stockfish-web` 0.3.0의 Stockfish 18 small-network 단일 스레드 WASM 빌드
+- 고정된 단일 스레드 로컬 자산으로 복사하는 `stockfish` 18.0.8의 `stockfish-18-lite-single.js`와 `stockfish-18-lite-single.wasm`
 - 엔진 로드와 타입이 있는 UCI 메시지 전달만 담당하는 작은 JavaScript Worker 어댑터
 - 런타임 CDN이나 외부 UI 서비스 없이 저장소가 직접 관리하는 CSS
 
@@ -434,7 +434,7 @@ Benchmark Rating은 LLM과 사람 프로필 모두 계산할 수 있다. 경기 
 
 승인된 설계와 이후 사용자용 진행 결과는 원본 Markdown만 전달하지 않고 탐색 가능한 HTML로 렌더링한다. 한국어 설계 HTML은 `docs/design/ko/index.html`, 영문은 `docs/design/index.html`에 두고 서로 언어 전환 링크를 제공한다. 로컬 작업은 클릭 가능한 HTTP 미리보기 주소로 제공하며 공개 저장소 README에서도 HTML 설계를 연결한다.
 
-Stockfish GPL-3.0 자산을 재배포하고 GitHub Pages로 제공하므로 저장소는 공개한다. 저장소 전체는 GPL-3.0-only를 사용한다. 프로젝트 라이선스, Stockfish 라이선스, 정확한 Stockfish 소스·빌드 링크, 서드파티 고지, 논문 출처를 포함한다. README는 한국어를 먼저 제공하고 영문 실행 명령을 함께 적으며 첫 실행 설명 전에 로컬 전용 저장을 알린다.
+저장소는 공개하며 애플리케이션 코드는 AGPL-3.0-or-later를 사용한다. 고정한 `stockfish` 18.0.8 패키지와 번들 Stockfish.js 자산은 GPLv3이고, 해당 라이선스 원문과 소스 링크를 빌드에 함께 배포한다. 프로젝트 라이선스, 정확한 npm 패키지 integrity, 소스·빌드 링크, 서드파티 고지, 논문 출처를 포함한다. README는 한국어를 먼저 제공하고 영문 실행 명령을 함께 적으며 첫 실행 설명 전에 로컬 전용 저장을 알린다.
 
 게시 시 인증된 `yoonkh2000` 계정을 사용한다. 원격 생성 전 `yoonkh2000/llm-chess-arena`의 존재 여부를 확인하고 기존 원격을 덮어쓰지 않는다. 로컬 저장소를 먼저 커밋·검증한 뒤 push하고 GitHub Pages를 켠 다음 공개 배포를 별도로 검증한다.
 

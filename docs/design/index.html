@@ -191,7 +191,7 @@ explicitly requests current-position analysis; provide full-game review
 only after the user starts it.</li>
 <li>Generate external-LLM coaching prompts with or without a Stockfish
 review and store pasted coaching responses.</li>
-<li>Publish source under GPL-3.0 to
+<li>Publish source under AGPL-3.0-or-later to
 <code>yoonkh2000/llm-chess-arena</code> and deploy the verified static
 build to GitHub Pages.</li>
 </ol>
@@ -256,9 +256,10 @@ persistence and exports.</li>
 IndexedDB.</li>
 <li><code>wasm-bindgen</code>, <code>web-sys</code>, and
 <code>js-sys</code> at browser boundaries.</li>
-<li><code>@lichess-org/stockfish-web</code> 0.3.0, Stockfish 18
-small-network single-thread WebAssembly build, copied as pinned local
-assets.</li>
+<li><code>stockfish</code> 18.0.8, specifically
+<code>stockfish-18-lite-single.js</code> and
+<code>stockfish-18-lite-single.wasm</code>, copied as pinned
+single-thread local assets.</li>
 <li>A small JavaScript Worker adapter for loading the engine and
 forwarding typed UCI messages. All application state and UI logic remain
 in Rust.</li>
@@ -769,12 +770,14 @@ complete Korean translation lives at
 language switch. Local work is served over HTTP with a clickable preview
 URL, and the published repository links to both HTML designs from its
 README.</p>
-<p>The repository is public because it redistributes GPL-3.0 Stockfish
-assets and is intended for GitHub Pages. The whole repository uses
-GPL-3.0-only. It includes the project license, Stockfish license, exact
-Stockfish source/build pointer, third-party notices, and paper citation.
-The README is Korean-first with English setup commands and explains
-local-only data storage before the first-run instructions.</p>
+<p>The repository is public and the application code uses
+AGPL-3.0-or-later. The pinned <code>stockfish</code> 18.0.8 package and
+bundled Stockfish.js assets use GPLv3, with their license text and
+source pointer distributed alongside the build. The repository includes
+the project license, exact npm package integrity, source/build links,
+third-party notices, and paper citation. The README is Korean-first with
+English setup commands and explains local-only data storage before the
+first-run instructions.</p>
 <p>Publishing uses the authenticated <code>yoonkh2000</code> GitHub
 account. Before remote creation, the workflow checks whether
 <code>yoonkh2000/llm-chess-arena</code> already exists and never

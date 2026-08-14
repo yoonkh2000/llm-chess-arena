@@ -29,7 +29,7 @@ The design is informed by *LLM CHESS: Benchmarking Reasoning and Instruction-Fol
 6. Maintain an LLM-only Arena Elo, a local Personal Elo for human profiles, and paper-style benchmark ratings against fixed-Elo Stockfish opponents.
 7. Keep Stockfish review disabled during play unless the user explicitly requests current-position analysis; provide full-game review only after the user starts it.
 8. Generate external-LLM coaching prompts with or without a Stockfish review and store pasted coaching responses.
-9. Publish source under GPL-3.0 to `yoonkh2000/llm-chess-arena` and deploy the verified static build to GitHub Pages.
+9. Publish source under AGPL-3.0-or-later to `yoonkh2000/llm-chess-arena` and deploy the verified static build to GitHub Pages.
 
 ## 3. Non-goals
 
@@ -64,7 +64,7 @@ The design is informed by *LLM CHESS: Benchmarking Reasoning and Instruction-Fol
 - `serde` and `serde_json` for versioned persistence and exports.
 - `rexie` 0.6.x as the asynchronous Rust wrapper around IndexedDB.
 - `wasm-bindgen`, `web-sys`, and `js-sys` at browser boundaries.
-- `@lichess-org/stockfish-web` 0.3.0, Stockfish 18 small-network single-thread WebAssembly build, copied as pinned local assets.
+- `stockfish` 18.0.8, specifically `stockfish-18-lite-single.js` and `stockfish-18-lite-single.wasm`, copied as pinned single-thread local assets.
 - A small JavaScript Worker adapter for loading the engine and forwarding typed UCI messages. All application state and UI logic remain in Rust.
 - CSS owned by the repository; no required runtime CDN or third-party UI service.
 
@@ -436,7 +436,7 @@ The repository default branch is `main`. GitHub Actions runs formatting, clippy,
 
 The approved design and later user-facing progress artifacts are rendered as navigable HTML, not delivered only as raw Markdown. The English design lives at `docs/design/index.html`, the complete Korean translation lives at `docs/design/ko/index.html`, and both pages provide a language switch. Local work is served over HTTP with a clickable preview URL, and the published repository links to both HTML designs from its README.
 
-The repository is public because it redistributes GPL-3.0 Stockfish assets and is intended for GitHub Pages. The whole repository uses GPL-3.0-only. It includes the project license, Stockfish license, exact Stockfish source/build pointer, third-party notices, and paper citation. The README is Korean-first with English setup commands and explains local-only data storage before the first-run instructions.
+The repository is public and the application code uses AGPL-3.0-or-later. The pinned `stockfish` 18.0.8 package and bundled Stockfish.js assets use GPLv3, with their license text and source pointer distributed alongside the build. The repository includes the project license, exact npm package integrity, source/build links, third-party notices, and paper citation. The README is Korean-first with English setup commands and explains local-only data storage before the first-run instructions.
 
 Publishing uses the authenticated `yoonkh2000` GitHub account. Before remote creation, the workflow checks whether `yoonkh2000/llm-chess-arena` already exists and never overwrites an existing remote. The local repository is committed and verified first; then it is pushed, GitHub Pages is enabled, and the public deployment is verified separately.
 

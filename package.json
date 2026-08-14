@@ -1,0 +1,17 @@
+{
+  "name": "llm-chess-arena",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "stockfish:copy": "node scripts/copy-stockfish.mjs",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "stockfish": "18.0.8"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1"
+  }
+}

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko-KR">
+<html lang="ko">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -14,8 +14,8 @@
       <a class="language-switch" href="../">English</a>
     </div>
     <h1>LLM Chess Arena 설계</h1>
-    <p class="lede">사람, LLM, Stockfish가 함께 두고 기록하며 배우는
-로컬 퍼스트 체스 아레나</p>
+    <p class="lede">사람, LLM, Stockfish가 함께 두고 기록하고 학습하는
+로컬 우선 체스 아레나</p>
   </header>
   <nav aria-label="문서 목차">
 <ul>
@@ -174,7 +174,7 @@ href="https://arxiv.org/pdf/2512.01992">arXiv:2512.01992</a>)를
 분석을 요청하거나 경기 후 전체 리뷰를 시작할 때만 실행한다.</li>
 <li>Stockfish 리뷰 유무와 관계없이 외부 LLM용 코칭 프롬프트를 만들고,
 붙여넣은 코칭 답변을 저장한다.</li>
-<li>GPL-3.0으로 소스를 공개하고
+<li>AGPL-3.0-or-later로 소스를 공개하고
 <code>yoonkh2000/llm-chess-arena</code>와 GitHub Pages에 배포한다.</li>
 </ol>
 <h2 id="3-제외-범위">3. 제외 범위</h2>
@@ -228,9 +228,9 @@ Trunk</li>
 <li>IndexedDB용 비동기 Rust 래퍼 <code>rexie</code> 0.6.x</li>
 <li>브라우저 경계의 <code>wasm-bindgen</code>, <code>web-sys</code>,
 <code>js-sys</code></li>
-<li>고정된 로컬 자산으로 복사하는
-<code>@lichess-org/stockfish-web</code> 0.3.0의 Stockfish 18
-small-network 단일 스레드 WASM 빌드</li>
+<li>고정된 단일 스레드 로컬 자산으로 복사하는 <code>stockfish</code>
+18.0.8의 <code>stockfish-18-lite-single.js</code>와
+<code>stockfish-18-lite-single.wasm</code></li>
 <li>엔진 로드와 타입이 있는 UCI 메시지 전달만 담당하는 작은 JavaScript
 Worker 어댑터</li>
 <li>런타임 CDN이나 외부 UI 서비스 없이 저장소가 직접 관리하는 CSS</li>
@@ -669,9 +669,10 @@ workflow는 <code>main</code>의 필수 검사가 모두 통과한 뒤에만
 <code>docs/design/index.html</code>에 두고 서로 언어 전환 링크를
 제공한다. 로컬 작업은 클릭 가능한 HTTP 미리보기 주소로 제공하며 공개
 저장소 README에서도 HTML 설계를 연결한다.</p>
-<p>Stockfish GPL-3.0 자산을 재배포하고 GitHub Pages로 제공하므로
-저장소는 공개한다. 저장소 전체는 GPL-3.0-only를 사용한다. 프로젝트
-라이선스, Stockfish 라이선스, 정확한 Stockfish 소스·빌드 링크, 서드파티
+<p>저장소는 공개하며 애플리케이션 코드는 AGPL-3.0-or-later를 사용한다.
+고정한 <code>stockfish</code> 18.0.8 패키지와 번들 Stockfish.js 자산은
+GPLv3이고, 해당 라이선스 원문과 소스 링크를 빌드에 함께 배포한다.
+프로젝트 라이선스, 정확한 npm 패키지 integrity, 소스·빌드 링크, 서드파티
 고지, 논문 출처를 포함한다. README는 한국어를 먼저 제공하고 영문 실행
 명령을 함께 적으며 첫 실행 설명 전에 로컬 전용 저장을 알린다.</p>
 <p>게시 시 인증된 <code>yoonkh2000</code> 계정을 사용한다. 원격 생성 전
