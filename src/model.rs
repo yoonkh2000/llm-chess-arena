@@ -53,6 +53,24 @@ impl Side {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SidePreference {
+    White,
+    Black,
+    Random,
+}
+
+impl SidePreference {
+    pub fn resolve(self, random: f64) -> Side {
+        match self {
+            Self::White => Side::White,
+            Self::Black => Side::Black,
+            Self::Random if random < 0.5 => Side::White,
+            Self::Random => Side::Black,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GameMode {

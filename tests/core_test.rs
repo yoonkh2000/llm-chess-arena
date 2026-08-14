@@ -1,6 +1,6 @@
 use llm_chess_arena::{
     chess::{ChessGame, pieces_from_fen},
-    model::{AppData, GameMode},
+    model::{AppData, GameMode, Side, SidePreference},
     prompt::parse_llm_response,
     rating::{benchmark_estimate, updated_rating},
     stockfish::{parse_bestmove, parse_info},
@@ -17,6 +17,16 @@ fn app_starts_with_me_and_five_modes() {
 #[test]
 fn equal_ratings_move_sixteen_points() {
     assert_eq!(updated_rating(1200.0, 1200.0, 1.0), 1216.0);
+}
+
+#[test]
+fn explicit_and_random_side_preferences_resolve() {
+    assert_eq!(SidePreference::White.resolve(0.9), Side::White);
+    assert_eq!(SidePreference::Black.resolve(0.1), Side::Black);
+    assert_eq!(SidePreference::Random.resolve(0.0), Side::White);
+    assert_eq!(SidePreference::Random.resolve(0.499), Side::White);
+    assert_eq!(SidePreference::Random.resolve(0.5), Side::Black);
+    assert_eq!(SidePreference::Random.resolve(0.999), Side::Black);
 }
 
 #[test]

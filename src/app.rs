@@ -1,4 +1,4 @@
-use js_sys::{Array, Date};
+use js_sys::{Array, Date, Math};
 use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{
@@ -12,6 +12,7 @@ use crate::{
     model::{
         AnalysisRecord, AppData, Attempt, EngineConfig, GameMode, GameRecord, MoveRecord,
         Participant, PlayerKind, PlayerProfile, PromptProtocol, RatingEvent, SCHEMA_VERSION, Side,
+        SidePreference,
     },
     prompt::{coaching_prompt, move_prompt, parse_llm_response, pgn},
     rating::{benchmark_estimate, updated_rating},
@@ -48,7 +49,7 @@ pub struct App {
     mode: GameMode,
     protocol: PromptProtocol,
     rated: bool,
-    primary_side: Side,
+    primary_side: SidePreference,
     human_one: String,
     human_two: String,
     llm_one: String,
@@ -139,7 +140,7 @@ impl Component for App {
             mode: GameMode::HumanVsLlm,
             protocol: PromptProtocol::ArenaDirect,
             rated: true,
-            primary_side: Side::White,
+            primary_side: SidePreference::White,
             human_one: String::new(),
             human_two: String::new(),
             llm_one: String::new(),
@@ -218,10 +219,10 @@ impl Component for App {
             }
             Msg::SetRated(value) => self.rated = value,
             Msg::SetSide(value) => {
-                self.primary_side = if value == "black" {
-                    Side::Black
-                } else {
-                    Side::White
+                self.primary_side = match value.as_str() {
+                    "black" => SidePreference::Black,
+                    "random" => SidePreference::Random,
+                    _ => SidePreference::White,
                 }
             }
             Msg::SetHumanOne(value) => self.human_one = value,
@@ -626,12 +627,13 @@ impl App {
             kind: "stockfish".into(),
             elo_before: Some(self.engine_elo as f64),
         };
+        let primary_side = self.primary_side.resolve(Math::random());
         let (white, black) = match self.mode {
-            GameMode::HumanVsHuman => (human1()?, human2()?),
-            GameMode::HumanVsLlm => orient(self.primary_side, human1()?, llm1()?),
-            GameMode::LlmVsLlm => (llm1()?, llm2()?),
-            GameMode::HumanVsStockfish => orient(self.primary_side, human1()?, stockfish()),
-            GameMode::StockfishVsLlm => orient(self.primary_side, llm1()?, stockfish()),
+            GameMode::HumanVsHuman => orient(primary_side, human1()?, human2()?),
+            GameMode::HumanVsLlm => orient(primary_side, human1()?, llm1()?),
+            GameMode::LlmVsLlm => orient(primary_side, llm1()?, llm2()?),
+            GameMode::HumanVsStockfish => orient(primary_side, human1()?, stockfish()),
+            GameMode::StockfishVsLlm => orient(primary_side, llm1()?, stockfish()),
         };
         if white.id.is_some() && white.id == black.id {
             return Err("서로 다른 두 프로필을 선택해 주세요.".into());
@@ -664,12 +666,16 @@ impl App {
             review: vec![],
             coaching: None,
         };
+        let notice = format!(
+            "색상 배정 · 백: {} · 흑: {}",
+            record.white.name, record.black.name
+        );
         Ok(MatchState {
             chess: ChessGame::default(),
             record,
             selected: None,
             llm_input: String::new(),
-            notice: String::new(),
+            notice,
             invalid_attempts: 0,
             pending_attempts: vec![],
             waiting_engine: false,
@@ -948,6 +954,10 @@ impl App {
             self.data.profiles.iter().filter(move |p| p.kind == kind && p.active).map(|p| html! { <option value={p.id.to_string()} selected={p.id.to_string()==selected}>{format!("{} · Elo {:.0}{}", p.name, p.elo, if p.model.is_empty() { "".into() } else { format!(" · {}", p.model) })}</option> }).collect::<Html>()
         };
         let needs_h2 = self.mode == GameMode::HumanVsHuman;
+        let needs_h1 = matches!(
+            self.mode,
+            GameMode::HumanVsHuman | GameMode::HumanVsLlm | GameMode::HumanVsStockfish
+        );
         let needs_l1 = matches!(
             self.mode,
             GameMode::HumanVsLlm | GameMode::LlmVsLlm | GameMode::StockfishVsLlm
@@ -956,11 +966,11 @@ impl App {
         html! { <section class="grid two">
             <div class="card hero-card"><span class="eyebrow">{"NEW MATCH"}</span><h2>{"새 대국"}</h2><p>{"사람, 외부 LLM, 브라우저 내 Stockfish를 원하는 조합으로 연결합니다."}</p>
                 <label>{"대국 유형"}<select onchange={ctx.link().callback(|e: Event| Msg::SetMode(e.target_unchecked_into::<HtmlSelectElement>().value()))}>{for GameMode::ALL.map(|m| html!{<option value={mode_value(m)} selected={self.mode==m}>{m.label()}</option>})}</select></label>
-                <label>{"주 프로필"}<select onchange={ctx.link().callback(|e: Event| Msg::SetHumanOne(e.target_unchecked_into::<HtmlSelectElement>().value()))}>{profile_options(PlayerKind::Human,&self.human_one)}</select></label>
+                {if needs_h1 { html!{<label>{"사람 프로필"}<select onchange={ctx.link().callback(|e: Event| Msg::SetHumanOne(e.target_unchecked_into::<HtmlSelectElement>().value()))}>{profile_options(PlayerKind::Human,&self.human_one)}</select></label>} } else {html!{}}}
                 {if needs_h2 { html!{<label>{"두 번째 사람"}<select onchange={ctx.link().callback(|e: Event| Msg::SetHumanTwo(e.target_unchecked_into::<HtmlSelectElement>().value()))}>{profile_options(PlayerKind::Human,&self.human_two)}</select></label>} } else {html!{}}}
                 {if needs_l1 { html!{<label>{"LLM 프로필"}<select onchange={ctx.link().callback(|e: Event| Msg::SetLlmOne(e.target_unchecked_into::<HtmlSelectElement>().value()))}>{profile_options(PlayerKind::Llm,&self.llm_one)}</select></label>} } else {html!{}}}
                 {if needs_l2 { html!{<label>{"두 번째 LLM"}<select onchange={ctx.link().callback(|e: Event| Msg::SetLlmTwo(e.target_unchecked_into::<HtmlSelectElement>().value()))}>{profile_options(PlayerKind::Llm,&self.llm_two)}</select></label>} } else {html!{}}}
-                {if !matches!(self.mode, GameMode::HumanVsHuman | GameMode::LlmVsLlm) { html!{<label>{"주 프로필 색"}<select onchange={ctx.link().callback(|e: Event| Msg::SetSide(e.target_unchecked_into::<HtmlSelectElement>().value()))}><option value="white">{"백"}</option><option value="black">{"흑"}</option></select></label>} } else {html!{}}}
+                <label>{"주 선수 색"}<select onchange={ctx.link().callback(|e: Event| Msg::SetSide(e.target_unchecked_into::<HtmlSelectElement>().value()))}><option value="white" selected={self.primary_side==SidePreference::White}>{"백"}</option><option value="black" selected={self.primary_side==SidePreference::Black}>{"흑"}</option><option value="random" selected={self.primary_side==SidePreference::Random}>{"랜덤"}</option></select></label>
                 {if matches!(self.mode, GameMode::HumanVsStockfish | GameMode::StockfishVsLlm) {html!{<label>{format!("Stockfish 목표 Elo · {}", self.engine_elo)}<input type="range" min="1320" max="2800" step="100" value={self.engine_elo.to_string()} oninput={ctx.link().callback(|e: InputEvent| Msg::SetEngineElo(e.target_unchecked_into::<HtmlInputElement>().value()))}/></label>}} else {html!{}}}
                 <div class="inline"><label>{"LLM 프로토콜"}<select onchange={ctx.link().callback(|e: Event| Msg::SetProtocol(e.target_unchecked_into::<HtmlSelectElement>().value()))}><option value="arena">{"간결 UCI"}</option><option value="paper">{"논문 벤치마크 (3회 제한)"}</option></select></label><label class="check"><input type="checkbox" checked={self.rated} onchange={ctx.link().callback(|e: Event| Msg::SetRated(e.target_unchecked_into::<HtmlInputElement>().checked()))}/>{"Elo 반영"}</label></div>
                 <button class="primary" onclick={ctx.link().callback(|_| Msg::StartGame)}>{"대국 시작"}</button>
@@ -981,7 +991,7 @@ impl App {
         });
         html! { <section class="match-layout">
             <div class="card board-card"><div class="player black"><b>{&active.record.black.name}</b><span>{active.record.black.elo_before.map(|e| format!("Elo {e:.0}")).unwrap_or_default()}</span></div>
-                <div class="chessboard">{for (0..64).map(|index| { let square=square_name(index); let selected=active.selected.as_deref()==Some(&square); let piece=pieces[index].map(unicode_piece).unwrap_or(""); html!{<button class={classes!("square", ((index+index/8)%2==0).then_some("light"), ((index+index/8)%2!=0).then_some("dark"), selected.then_some("selected"))} aria-label={square.clone()} onclick={ctx.link().callback(move |_| Msg::SelectSquare(square.clone()))}><span>{piece}</span>{if index%8==0 {html!{<small>{format!("{}", 8-index/8)}</small>}} else {html!{}}}</button>} })}</div>
+                <div class="chessboard">{for (0..64).map(|index| { let square=square_name(index); let selected=active.selected.as_deref()==Some(&square); let piece=pieces[index]; let glyph=piece.map(unicode_piece).unwrap_or(""); let piece_class=piece.map(|value|if value.is_ascii_uppercase(){"piece-white"}else{"piece-black"}); html!{<button class={classes!("square", ((index+index/8)%2==0).then_some("light"), ((index+index/8)%2!=0).then_some("dark"), selected.then_some("selected"))} aria-label={square.clone()} onclick={ctx.link().callback(move |_| Msg::SelectSquare(square.clone()))}><span class={classes!("piece",piece_class)}>{glyph}</span>{if index%8==0 {html!{<small>{format!("{}", 8-index/8)}</small>}} else {html!{}}}</button>} })}</div>
                 <div class="player white"><b>{&active.record.white.name}</b><span>{active.record.white.elo_before.map(|e| format!("Elo {e:.0}")).unwrap_or_default()}</span></div>
             </div>
             <div class="side-stack"><div class="card"><span class="eyebrow">{active.record.mode.label()}</span><h2>{if let Some(result)=&active.record.result {format!("종료 · {result}")} else {format!("{} 차례", if active.chess.side_to_move()==Side::White {"백"} else {"흑"})}}</h2><p>{if active.notice.is_empty(){format!("{} ply · FEN은 매 수 자동 저장", active.chess.ply())}else{active.notice.clone()}}</p><div class="moves">{for active.record.moves.iter().filter(|m| !m.uci.is_empty()).map(|m| html!{<span>{format!("{}. {}", m.ply, m.san)}</span>})}</div><div class="inline"><button onclick={ctx.link().callback(|_| Msg::Resign)} disabled={active.record.result.is_some()}>{"기권"}</button><button onclick={ctx.link().callback(|_| Msg::AgreeDraw)} disabled={active.record.result.is_some()}>{"무승부"}</button>{if active.record.result.is_some(){html!{<button class="primary" onclick={ctx.link().callback(|_|Msg::NewMatch)}>{"새 대국"}</button>}}else{html!{}}}</div><div class="analysis-request"><button disabled={active.waiting_engine||self.position_analysis_busy} onclick={ctx.link().callback(|_|Msg::AnalyzeCurrent)}>{if self.position_analysis_busy{"Stockfish 분석 중…"}else{"현재 포지션 분석"}}</button>{if let Some(line)=&self.position_analysis{html!{<p class="analysis-result"><b>{line.pv.first().map(|mv|format!("추천 수 {mv}")).unwrap_or_else(||"분석 완료".into())}</b><span>{if let Some(mate)=line.mate{format!("메이트 {mate} · depth {}",line.depth)}else{format!("현재 차례 기준 {:+}cp · depth {}",line.score_cp.unwrap_or(0),line.depth)}}</span></p>}}else{html!{<small>{"누를 때만 로컬 Stockfish가 분석합니다."}</small>}}}</div></div>
@@ -1097,6 +1107,7 @@ fn orient(
         (other, primary)
     }
 }
+
 fn participant_kind(active: &MatchState) -> &str {
     if active.chess.side_to_move() == Side::White {
         &active.record.white.kind

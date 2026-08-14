@@ -201,13 +201,7 @@ pub fn pieces_from_fen(fen: &str) -> [Option<char>; 64] {
 }
 
 pub fn unicode_piece(piece: char) -> &'static str {
-    match piece {
-        'K' => "♔",
-        'Q' => "♕",
-        'R' => "♖",
-        'B' => "♗",
-        'N' => "♘",
-        'P' => "♙",
+    match piece.to_ascii_lowercase() {
         'k' => "♚",
         'q' => "♛",
         'r' => "♜",
